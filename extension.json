@@ -1,0 +1,27 @@
+{
+  "id": "discussions",
+  "name": "Discussions",
+  "version": "0.1.0",
+  "description": "提供主题讨论、讨论列表过滤排序、精华帖标记和讨论生命周期管理。",
+  "icon": "fas fa-comments",
+  "category": "feature",
+  "authors": ["Bias"],
+  "dependencies": ["core", "posts", "tags", "users"],
+  "provides": ["discussions", "discussion_lifecycle"],
+  "django": {
+    "app_config": "bias_ext_discussions.backend.apps.DiscussionsExtensionConfig",
+    "app_label": "discussions",
+    "migration_module": "bias_ext_discussions.backend.django_migrations"
+  },
+  "backend": {
+    "entry": "bias_ext_discussions.backend.ext"
+  },
+  "frontend": {
+    "admin_entry": "frontend/dist/admin/index.js",
+    "forum_entry": "frontend/dist/forum/index.js"
+  },
+  "extra": {
+    "auto_install": true,
+    "auto_enable": true
+  }
+}

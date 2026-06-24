@@ -1,0 +1,16 @@
+[project]
+name = "bias-ext-discussions"
+version = "0.1.0"
+description = "Bias Discussions Extension"
+requires-python = ">=3.11"
+dependencies = ["bias-core>=0.1,<0.2"]
+
+[project.entry-points."bias.extensions"]
+discussions = "bias_ext_discussions.backend.ext:extend"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["bias_ext_discussions*"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.1", "pytest-django>=4.8"]
