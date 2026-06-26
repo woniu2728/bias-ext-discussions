@@ -5,7 +5,7 @@ import {
 import { getDiscussionBadges } from '@bias/discussions'
 import { getPageState,
   getUiCopy
-} from '@bias/forum'
+} from '@bias/core/forum'
 import { resolveDiscussionDetailMetaPayload } from './discussionDetailMeta.js'
 
 export function useDiscussionDetailMetaState({

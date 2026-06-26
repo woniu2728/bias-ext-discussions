@@ -104,8 +104,8 @@ import {
   ref,
   computed } from '@bias/core'
 import { ForumActionMenu
-} from '@bias/forum'
-import { getUiCopy } from '@bias/forum'
+} from '@bias/core/forum'
+import { getUiCopy } from '@bias/core/forum'
 
 const props = defineProps({
   discussion: {

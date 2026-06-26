@@ -6,7 +6,7 @@ import { getEmptyState,
   getForumSidebarSections,
   getStateBlock,
   getUiCopy
-} from '@bias/forum'
+} from '@bias/core/forum'
 import {
   buildDiscussionFilterLocation,
   getDiscussionListStartButtonStyle,

@@ -51,7 +51,7 @@ import {
 import DiscussionSidebarActions from './DiscussionSidebarActions.vue'
 import DiscussionSidebarScrubber from './DiscussionSidebarScrubber.vue'
 import { getUiCopy
-} from '@bias/forum'
+} from '@bias/core/forum'
 
 defineProps({
   discussion: {

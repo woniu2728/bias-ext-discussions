@@ -4,7 +4,7 @@ import {
 import { getDiscussionPresentationItems,
   getDiscussionReviewBanner } from '@bias/discussions'
 import { getHeroMetaItems
-} from '@bias/forum'
+} from '@bias/core/forum'
 
 export function createDiscussionHeroState({
   authStore,

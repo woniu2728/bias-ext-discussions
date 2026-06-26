@@ -20,7 +20,7 @@
 
 import { computed } from '@bias/core'
 import DiscussionEventPostBase from './DiscussionEventPostBase.vue'
-import { getUiCopy } from '@bias/forum'
+import { getUiCopy } from '@bias/core/forum'
 
 const props = defineProps({
   post: { type: Object, required: true },

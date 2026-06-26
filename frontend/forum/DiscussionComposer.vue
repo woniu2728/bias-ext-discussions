@@ -188,7 +188,7 @@ import {
   runComposerSubmitSuccess,
   useComposerRuntime,
   useComposerStore
-} from '@bias/forum'
+} from '@bias/core/forum'
 import { normalizeDiscussion } from '@bias/discussions'
 
 const router = useRouter()

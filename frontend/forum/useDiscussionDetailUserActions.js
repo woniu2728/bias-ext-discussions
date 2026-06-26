@@ -4,7 +4,7 @@ import {
 import {
   getUiCopy,
   runComposerInitialStateContributors
-} from '@bias/forum'
+} from '@bias/core/forum'
 import { buildDiscussionPath } from '@bias/discussions'
 
 export function useDiscussionDetailUserActions({

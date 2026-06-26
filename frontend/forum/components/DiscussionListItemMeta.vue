@@ -55,7 +55,7 @@
 
 <script setup>
 import { toRef } from '@bias/core'
-import { ForumStateBadge } from '@bias/forum'
+import { ForumStateBadge } from '@bias/core/forum'
 import { useDiscussionListItemMetaState } from '../useDiscussionListItemMetaState'
 
 const props = defineProps({

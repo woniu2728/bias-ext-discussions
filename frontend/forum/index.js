@@ -5,7 +5,7 @@ import {
   createUiTextCopy,
   extendForum,
   getUiCopy
-} from '@bias/forum'
+} from '@bias/core/forum'
 import { normalizeDiscussion, registerStartDiscussionProvider } from '@bias/discussions'
 import { buildUserPath } from '@bias/users'
 import DiscussionComposer from './DiscussionComposer.vue'

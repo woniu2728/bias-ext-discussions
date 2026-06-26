@@ -1,5 +1,5 @@
-import { extendAdmin } from '@bias/admin'
-import { ExtensionGeneratedPermissionsPage } from '@bias/admin/components'
+import { extendAdmin } from '@bias/core/admin'
+import { ExtensionGeneratedPermissionsPage } from '@bias/core/components/admin'
 
 export const extend = [
   extendAdmin(admin => admin.dashboardStat({

@@ -1,5 +1,5 @@
 import { usePaginatedListState } from '@bias/core'
-import { getUiCopy } from '@bias/forum'
+import { getUiCopy } from '@bias/core/forum'
 import { createDiscussionListLoadState } from './discussionListLoadState.shared.js'
 
 export function useDiscussionListLoadState({

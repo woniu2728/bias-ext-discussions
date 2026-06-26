@@ -32,7 +32,7 @@
 
 import { computed } from '@bias/core'
 import { getDiscussionReplyState } from '@bias/discussions'
-import { getUiCopy } from '@bias/forum'
+import { getUiCopy } from '@bias/core/forum'
 import { useForumRealtimeStore } from '@bias/realtime'
 import { formatDiscussionTypingNotice } from '../discussionTypingState'
 

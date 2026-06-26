@@ -55,7 +55,7 @@ import {
   ref,
   computed } from '@bias/core'
 import { getUiCopy
-} from '@bias/forum'
+} from '@bias/core/forum'
 
 defineProps({
   scrubberScrollbarStyle: {

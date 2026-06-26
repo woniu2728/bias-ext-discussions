@@ -26,7 +26,7 @@ import { useRouter,
 } from '@bias/core'
 import { useComposerStore,
   useForumStore
-} from '@bias/forum'
+} from '@bias/core/forum'
 import DiscussionListContent from './components/DiscussionListContent.vue'
 import DiscussionListSidebar from './components/DiscussionListSidebar.vue'
 import { useDiscussionListViewModel } from './useDiscussionListViewModel'

@@ -15,7 +15,7 @@ import { useRouter,
   useRoute } from '@bias/core'
 import { ForumStateBlock,
   useComposerStore
-} from '@bias/forum'
+} from '@bias/core/forum'
 import { useDiscussionCreateViewModel } from './useDiscussionCreateViewModel'
 
 const route = useRoute()

@@ -189,8 +189,8 @@ import {
   computed } from '@bias/core'
 import { ForumActionMenu,
   ForumStateBadge
-} from '@bias/forum'
-import { getUiCopy } from '@bias/forum'
+} from '@bias/core/forum'
+import { getUiCopy } from '@bias/core/forum'
 import { getPostFlagPanel, getPostReviewBanner, getPostStateBadges } from '@bias/posts'
 
 const props = defineProps({

@@ -1,6 +1,6 @@
 
 import { computed } from '@bias/core'
-import { getUiCopy } from '@bias/forum'
+import { getUiCopy } from '@bias/core/forum'
 
 export function createDiscussionListSidebarState({
   authStore,

@@ -178,7 +178,7 @@ import {
   ForumStateBlock,
   useComposerStore,
   useForumStore
-} from '@bias/forum'
+} from '@bias/core/forum'
 import DiscussionHero from './components/DiscussionHero.vue'
 import DiscussionMobileActions from './components/DiscussionMobileActions.vue'
 import DiscussionReplyState from './components/DiscussionReplyState.vue'

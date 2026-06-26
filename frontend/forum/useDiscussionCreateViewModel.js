@@ -1,7 +1,7 @@
 
 import { computed } from '@bias/core'
 import { useStartDiscussionAction } from '@bias/discussions'
-import { getUiCopy } from '@bias/forum'
+import { getUiCopy } from '@bias/core/forum'
 import {
   useDiscussionCreatePage } from './useDiscussionCreatePage'
 import { useDiscussionCreateViewBindings } from './useDiscussionCreateViewBindings'

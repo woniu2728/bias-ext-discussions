@@ -1,6 +1,6 @@
 import { useDiscussionDetailPermissionState } from './useDiscussionDetailPermissionState'
 import { getPostTypeDefinition } from '@bias/posts'
-import { getUiCopy } from '@bias/forum'
+import { getUiCopy } from '@bias/core/forum'
 import { useDiscussionDetailInteractions } from './useDiscussionDetailInteractions'
 import { useDiscussionDetailMenus } from './useDiscussionDetailMenus'
 import { useDiscussionDetailPresentation } from './useDiscussionDetailPresentation'

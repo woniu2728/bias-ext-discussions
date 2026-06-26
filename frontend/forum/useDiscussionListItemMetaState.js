@@ -5,7 +5,7 @@ import { getDiscussionPresentationItems,
   getDiscussionStateBadges } from '@bias/discussions'
 import { getFeedbackNote,
   getUiCopy
-} from '@bias/forum'
+} from '@bias/core/forum'
 
 export function createDiscussionListItemMetaState({
   discussion,

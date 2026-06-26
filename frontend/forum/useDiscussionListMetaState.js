@@ -3,7 +3,7 @@ import {
   watch,
   computed } from '@bias/core'
 import { getUiCopy
-} from '@bias/forum'
+} from '@bias/core/forum'
 import {
   resolveDiscussionListActiveFilterCode,
   resolveDiscussionListPageMetaDescription,

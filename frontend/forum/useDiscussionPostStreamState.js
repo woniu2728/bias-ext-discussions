@@ -19,7 +19,7 @@ import {
   mergeForumEventPayload,
   } from '@bias/realtime'
 import { runForumRuntimeHook
-} from '@bias/forum'
+} from '@bias/core/forum'
 import { shouldAppendRealtimePostImmediately } from './discussionPostStream.js'
 import { useDiscussionNearRouteState } from './useDiscussionNearRouteState'
 

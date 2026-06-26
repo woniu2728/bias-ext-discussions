@@ -62,7 +62,7 @@ import DiscussionListItem from './DiscussionListItem.vue'
 import {
   ForumLoadMoreButton,
   ForumStateBlock
-} from '@bias/forum'
+} from '@bias/core/forum'
 import { useDiscussionListContentState } from '../useDiscussionListContentState'
 
 defineProps({

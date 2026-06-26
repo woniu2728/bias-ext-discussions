@@ -62,8 +62,8 @@
 
 <script setup>
 import { computed } from '@bias/core'
-import { ForumActionMenu } from '@bias/forum'
-import { getStateBlock } from '@bias/forum'
+import { ForumActionMenu } from '@bias/core/forum'
+import { getStateBlock } from '@bias/core/forum'
 
 const props = defineProps({
   discussion: {
