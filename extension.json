@@ -18,8 +18,8 @@
     "entry": "bias_ext_discussions.backend.ext"
   },
   "frontend": {
-    "admin_entry": "frontend/dist/admin/index.js",
-    "forum_entry": "frontend/dist/forum/index.js"
+    "admin_entry": "frontend/admin/index.js",
+    "forum_entry": "frontend/forum/index.js"
   },
   "extra": {
     "auto_install": true,
