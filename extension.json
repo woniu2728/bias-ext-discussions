@@ -6,7 +6,8 @@
   "icon": "fas fa-comments",
   "category": "feature",
   "authors": ["Bias"],
-  "dependencies": ["core", "posts", "tags", "users"],
+  "dependencies": ["core", "tags", "users"],
+  "optional_dependencies": ["posts"],
   "provides": ["discussions", "discussion_lifecycle"],
   "django": {
     "app_config": "bias_ext_discussions.backend.apps.DiscussionsExtensionConfig",

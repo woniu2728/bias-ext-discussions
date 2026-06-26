@@ -17,8 +17,8 @@ from ninja_jwt.tokens import RefreshToken
 from bias_core.forum_registry import get_forum_registry
 from bias_core.models import AuditLog
 from bias_core.extensions import ResourceEndpointDefinition, ResourceRelationshipDefinition, ResourceSortDefinition
-from extensions.testing import ResourceRegistry
-from extensions.testing import ExtensionRuntimeTestMixin
+from bias_core.testing import ResourceRegistry
+from bias_core.testing import ExtensionRuntimeTestMixin
 from bias_ext_discussions.backend.visibility import (
     build_discussion_visibility_q,
     build_post_visibility_q,
@@ -235,7 +235,7 @@ class DiscussionApiTests(TestCase):
 
     def test_create_discussion_dispatches_created_event_after_commit(self):
         mocked_bus = Mock()
-        with patch("apps.core.domain_events.get_forum_event_bus", return_value=mocked_bus):
+        with patch("bias_core.domain_events.get_forum_event_bus", return_value=mocked_bus):
             with self.captureOnCommitCallbacks(execute=True) as callbacks:
                 discussion = DiscussionService.create_discussion(
                     title="After commit discussion event",
@@ -252,7 +252,7 @@ class DiscussionApiTests(TestCase):
             def is_private(self, model, instance, *, default=False):
                 return model is Discussion
 
-        with patch("apps.core.extensions.runtime_models.get_runtime_model_service", return_value=RuntimeModelService()):
+        with patch("bias_core.extensions.runtime_models.get_runtime_model_service", return_value=RuntimeModelService()):
             discussion = DiscussionService.create_discussion(
                 title="Private runtime discussion",
                 content="Initial post",
@@ -277,7 +277,7 @@ class DiscussionApiTests(TestCase):
         ).extend(app, SimpleNamespace(extension_id="private-runtime"))
         app.make("models")
 
-        with patch("apps.core.extensions.runtime_models.get_runtime_model_service", return_value=app.models):
+        with patch("bias_core.extensions.runtime_models.get_runtime_model_service", return_value=app.models):
             discussion = Discussion.objects.create(
                 title="Private saved by signal",
                 user=self.author,
@@ -309,7 +309,7 @@ class DiscussionApiTests(TestCase):
             lambda **context: True if context.get("ability") == "viewPrivate" else None,
         )
 
-        with patch("apps.core.extensions.policy_runtime_service.get_extension_application", return_value=app):
+        with patch("bias_core.extensions.policy_runtime_service.get_extension_application", return_value=app):
             self.assertTrue(Discussion.objects.filter(build_discussion_visibility_q(self.reader), id=discussion.id).exists())
 
     def test_view_private_scoper_allows_matching_private_discussion_visibility(self):
@@ -346,7 +346,7 @@ class DiscussionApiTests(TestCase):
             ),
         )
 
-        with patch("apps.core.extensions.runtime_models.get_runtime_model_service", return_value=app.models):
+        with patch("bias_core.extensions.runtime_models.get_runtime_model_service", return_value=app.models):
             visible_ids = set(
                 DiscussionService.apply_visibility_filters(
                     Discussion.objects.filter(id__in=[allowed.id, denied.id]),
@@ -419,7 +419,7 @@ class DiscussionApiTests(TestCase):
             ),
         )
 
-        with patch("apps.core.extensions.runtime_models.get_runtime_model_service", return_value=app.models):
+        with patch("bias_core.extensions.runtime_models.get_runtime_model_service", return_value=app.models):
             visible_ids = set(
                 DiscussionService.apply_visibility_filters(
                     Discussion.objects.filter(id__in=[allowed.id, denied.id]),
@@ -448,7 +448,7 @@ class DiscussionApiTests(TestCase):
         discussion.save(update_fields=["approval_status"])
 
         mocked_bus = Mock()
-        with patch("apps.core.domain_events.get_forum_event_bus", return_value=mocked_bus):
+        with patch("bias_core.domain_events.get_forum_event_bus", return_value=mocked_bus):
             with self.captureOnCommitCallbacks(execute=True) as callbacks:
                 DiscussionService.approve_discussion(discussion, admin, note="ok")
 
@@ -580,7 +580,7 @@ class DiscussionApiTests(TestCase):
                 raise OperationalError("database is locked")
             return original_create(*args, **kwargs)
 
-        with patch("apps.core.db.time.sleep", return_value=None):
+        with patch("bias_core.db.time.sleep", return_value=None):
             with patch("bias_ext_discussions.backend.services.Discussion.objects.create", side_effect=flaky_create):
                 discussion = DiscussionService.create_discussion(
                     title="Retry discussion",
@@ -721,7 +721,7 @@ class DiscussionApiTests(TestCase):
         )
 
         with patch("bias_ext_discussions.backend.handlers.get_runtime_resource_registry", return_value=registry):
-            with patch("apps.core.resource_dispatcher.get_runtime_resource_registry", return_value=registry):
+            with patch("bias_core.resource_dispatcher.get_runtime_resource_registry", return_value=registry):
                 response = self.client.get("/api/discussions/")
 
         self.assertEqual(response.status_code, 200, response.content)
@@ -756,7 +756,7 @@ class DiscussionApiTests(TestCase):
         )
 
         with patch("bias_ext_discussions.backend.handlers.get_runtime_resource_registry", return_value=registry):
-            with patch("apps.core.resource_dispatcher.get_runtime_resource_registry", return_value=registry):
+            with patch("bias_core.resource_dispatcher.get_runtime_resource_registry", return_value=registry):
                 response = self.client.get("/api/discussions/")
 
         self.assertEqual(response.status_code, 200, response.content)
@@ -823,7 +823,7 @@ class DiscussionApiTests(TestCase):
         )
 
         with patch("bias_ext_discussions.backend.handlers.get_runtime_resource_registry", return_value=registry):
-            with patch("apps.core.resource_dispatcher.get_runtime_resource_registry", return_value=registry):
+            with patch("bias_core.resource_dispatcher.get_runtime_resource_registry", return_value=registry):
                 response = self.client.get(f"/api/discussions/{discussion.id}")
 
         self.assertEqual(response.status_code, 200, response.content)
@@ -858,7 +858,7 @@ class DiscussionApiTests(TestCase):
         )
 
         with patch("bias_ext_discussions.backend.handlers.get_runtime_resource_registry", return_value=registry):
-            with patch("apps.core.resource_dispatcher.get_runtime_resource_registry", return_value=registry):
+            with patch("bias_core.resource_dispatcher.get_runtime_resource_registry", return_value=registry):
                 response = self.client.get(f"/api/discussions/{discussion.id}")
 
         self.assertEqual(response.status_code, 200, response.content)
@@ -951,7 +951,7 @@ class DiscussionApiTests(TestCase):
             user=self.author,
         )
 
-        with patch("apps.core.queue_service.QueueService.get_runtime_config", return_value={"enabled": True, "driver": "redis"}):
+        with patch("bias_core.queue_service.QueueService.get_runtime_config", return_value={"enabled": True, "driver": "redis"}):
             with patch.object(flush_discussion_view_count_task, "apply_async") as apply_async:
                 DiscussionService.record_view(discussion, self.reader)
 
@@ -1621,6 +1621,8 @@ class DiscussionApiTests(TestCase):
         self.reader.refresh_from_db()
         self.assertEqual(self.author.discussion_count, 0)
         self.assertEqual(self.reader.comment_count, 0)
+
+
 
 
 
