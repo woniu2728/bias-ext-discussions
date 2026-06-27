@@ -5,10 +5,21 @@
   "description": "提供主题讨论、讨论列表过滤排序、精华帖标记和讨论生命周期管理。",
   "icon": "fas fa-comments",
   "category": "feature",
-  "authors": ["Bias"],
-  "dependencies": ["core", "tags", "users"],
-  "optional_dependencies": ["posts"],
-  "provides": ["discussions", "discussion_lifecycle"],
+  "authors": [
+    "Bias"
+  ],
+  "dependencies": [
+    "core",
+    "tags",
+    "users"
+  ],
+  "optional_dependencies": [
+    "posts"
+  ],
+  "provides": [
+    "discussions",
+    "discussion_lifecycle"
+  ],
   "django": {
     "app_config": "bias_ext_discussions.backend.apps.DiscussionsExtensionConfig",
     "app_label": "discussions",
@@ -24,5 +35,8 @@
   "extra": {
     "auto_install": true,
     "auto_enable": true
+  },
+  "security": {
+    "capabilities_notice": "Discussion domain extension; owns discussion records and controls discussion visibility, sorting, lifecycle, and moderation surfaces."
   }
 }
