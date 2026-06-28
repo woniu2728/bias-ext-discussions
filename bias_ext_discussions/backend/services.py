@@ -7,7 +7,7 @@ from django.core.exceptions import PermissionDenied
 from django.db.models import Count
 from django.utils import timezone
 
-from bias_core.extensions.forum import sqlite_write_retry
+from bias_core.extensions.platform import sqlite_write_retry
 from bias_core.extensions.platform import get_forum_event_bus
 from bias_core.extensions.platform import evaluate_extension_policy
 from bias_core.extensions.runtime import (
@@ -15,7 +15,7 @@ from bias_core.extensions.runtime import (
     evaluate_runtime_model_policy,
     get_runtime_resource_registry,
 )
-from bias_core.extensions.forum import get_forum_registry
+from bias_core.extensions.platform import get_forum_registry
 from bias_ext_discussions.backend import discussion_tracking, service_lifecycle
 from bias_ext_discussions.backend.models import Discussion, DiscussionUser
 from bias_core.extensions.platform import PaginationService
@@ -220,6 +220,7 @@ class DiscussionService:
             "user": user,
             "query": q,
             "author": author,
+            "filter": list_filter,
             "params": normalized_query_params,
         }
         for query_definition in _get_forum_registry().get_discussion_list_queries():
@@ -339,8 +340,40 @@ class DiscussionService:
         return discussion_tracking.mark_all_as_read(user)
 
     @staticmethod
-    def update_read_state(discussion_id: int, user: User, last_read_post_number: int) -> DiscussionUser:
-        return discussion_tracking.update_read_state(discussion_id, user, last_read_post_number)
+    def update_read_state(
+        discussion_id: int,
+        user: User,
+        last_read_post_number: int,
+        *,
+        require_view: bool = True,
+    ) -> DiscussionUser:
+        return discussion_tracking.update_read_state(
+            discussion_id,
+            user,
+            last_read_post_number,
+            require_view=require_view,
+        )
+
+    @staticmethod
+    def clamp_read_states(discussion_id: int, last_post_number: int | None = None) -> int:
+        return discussion_tracking.clamp_read_states(discussion_id, last_post_number)
+
+    @staticmethod
+    def follow_discussion(
+        *,
+        discussion_id: int,
+        user_id: int,
+        last_read_post_number: int | None = None,
+    ) -> bool:
+        return discussion_tracking.follow_discussion(
+            discussion_id=discussion_id,
+            user_id=user_id,
+            last_read_post_number=last_read_post_number,
+        )
+
+    @staticmethod
+    def set_subscription(discussion_id: int, user: User, subscribed: bool) -> bool:
+        return discussion_tracking.set_subscription(discussion_id, user, subscribed)
 
     @staticmethod
     def update_discussion(
@@ -529,4 +562,3 @@ class DiscussionService:
         """
         from bias_core.extensions.platform import MarkdownService
         return MarkdownService.render(content, sanitize=True)
-

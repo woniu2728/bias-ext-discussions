@@ -4,8 +4,8 @@ from collections import OrderedDict
 
 from django.contrib.auth.models import AnonymousUser
 
-from bias_core.extensions.runtime import serialize_runtime_post_by_id
-from bias_core.extensions.forum import broadcast_realtime_discussion_event, iter_realtime_included_enrichers
+from bias_core.extensions.runtime import serialize_runtime_realtime_post_by_id
+from bias_core.extensions.platform import broadcast_realtime_discussion_event, iter_realtime_included_enrichers
 from bias_core.extensions.runtime import serialize_runtime_user
 
 
@@ -101,7 +101,7 @@ def serialize_discussion_for_realtime(discussion):
 
 
 def serialize_post_for_realtime(post_id: int):
-    return serialize_runtime_post_by_id(post_id, user=None)
+    return serialize_runtime_realtime_post_by_id(post_id, user=None)
 
 
 def build_realtime_included_payload(

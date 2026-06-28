@@ -14,23 +14,29 @@ from datetime import timedelta
 from io import StringIO
 from ninja_jwt.tokens import RefreshToken
 
-from bias_core.forum_registry import get_forum_registry
-from bias_core.models import AuditLog
 from bias_core.extensions import ResourceEndpointDefinition, ResourceRelationshipDefinition, ResourceSortDefinition
-from bias_core.testing import ResourceRegistry
-from bias_core.testing import ExtensionRuntimeTestMixin
+from bias_core.extensions.testing import (
+    AuditLog,
+    ExtensionApplication,
+    ExtensionRuntimeTestMixin,
+    ResourceRegistry,
+    capture_runtime_events,
+    get_forum_registry,
+)
 from bias_ext_discussions.backend.visibility import (
     build_discussion_visibility_q,
-    build_post_visibility_q,
     scope_discussion_view,
 )
+from bias_ext_posts.backend.visibility import build_post_visibility_q
 from bias_ext_discussions.backend.handlers import discussion_resource_endpoints
 from bias_ext_discussions.backend.models import Discussion, DiscussionUser
 from bias_ext_discussions.backend.schemas import DiscussionCreateSchema, DiscussionUpdateSchema
 from bias_ext_discussions.backend.services import DiscussionService
 from bias_core.extensions.runtime import (
     create_runtime_post,
+    follow_runtime_discussion,
     get_runtime_post_model,
+    mark_runtime_discussion_read,
 )
 from bias_core.extensions.runtime import (
     get_runtime_group_model,
@@ -61,15 +67,46 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
 
         self.assertIn("discussions.service", application.get_service_provider_keys(extension_id="discussions"))
         self.assertIn("discussions.timeline", application.get_service_provider_keys(extension_id="discussions"))
+        self.assertIn("search.target.discussion", application.get_service_provider_keys(extension_id="discussions"))
+        self.assertNotIn("search.target.post", application.get_service_provider_keys(extension_id="discussions"))
         self.assertIs(service["model"], Discussion)
         self.assertIs(service["state_model"], DiscussionUser)
         self.assertEqual(service["approval_approved"], Discussion.APPROVAL_APPROVED)
+        self.assertFalse(
+            any(
+                getattr(definition.event_type, "__module__", "") == "bias_ext_posts.backend.events"
+                or str(definition.event_type).startswith("posts.post.")
+                for definition in application.events.get_listeners(extension_id="discussions")
+            )
+        )
+        self.assertFalse(
+            any(
+                str(getattr(definition.model, "service_key", definition.model)) == "posts.service"
+                for definition in application.models.get_visibility(extension_id="discussions")
+            )
+        )
+        self.assertEqual(
+            sorted(service["event_types"].keys()),
+            [
+                "discussions.discussion.approved",
+                "discussions.discussion.created",
+                "discussions.discussion.hidden",
+                "discussions.discussion.locked",
+                "discussions.discussion.rejected",
+                "discussions.discussion.renamed",
+                "discussions.discussion.resubmitted",
+                "discussions.discussion.sticky_changed",
+                "discussions.discussion.user_read",
+            ],
+        )
         for key in (
             "create",
             "update",
             "delete",
             "set_hidden_state",
             "list",
+            "get_visible_ids",
+            "has_visibility",
             "approve",
             "reply_notification_context",
             "validate_replyable",
@@ -80,9 +117,26 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
             "set_subscription",
             "follow_if_enabled",
             "mark_read",
+            "clamp_read_states",
         ):
             self.assertTrue(callable(service[key]), key)
         self.assertTrue(callable(timeline_service["create_from_builder"]))
+
+    def test_realtime_post_payload_uses_realtime_contract(self):
+        from bias_ext_discussions.backend import realtime
+
+        with patch(
+            "bias_ext_discussions.backend.realtime.serialize_runtime_post_by_id",
+            create=True,
+            side_effect=AssertionError("discussion realtime should not use posts.service serialization"),
+        ), patch(
+            "bias_ext_discussions.backend.realtime.serialize_runtime_realtime_post_by_id",
+            return_value={"id": 42},
+        ) as serialize_mock:
+            payload = realtime.serialize_post_for_realtime(42)
+
+        self.assertEqual(payload, {"id": 42})
+        serialize_mock.assert_called_once_with(42, user=None)
 
     def test_discussions_capabilities_are_filtered_when_extension_disabled(self):
         self.disable_extension_for_test("discussions")
@@ -155,7 +209,7 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
             and item["target_app_label_source"] == "manifest"
             for item in audit["items"]
         ))
-        self.assertIn("0001_initial.py", extension["migration_plan"]["pending_files"])
+        self.assertEqual(extension["migration_plan"]["pending_files"], [])
 
     def test_discussions_extension_registers_discussion_sort_catalog(self):
         registry = get_forum_registry()
@@ -234,8 +288,8 @@ class DiscussionApiTests(TestCase):
         self.assertNotIn("tag_ids", DiscussionUpdateSchema.__fields__)
 
     def test_create_discussion_dispatches_created_event_after_commit(self):
-        mocked_bus = Mock()
-        with patch("bias_core.domain_events.get_forum_event_bus", return_value=mocked_bus):
+        events, dispatch_patch = capture_runtime_events()
+        with dispatch_patch:
             with self.captureOnCommitCallbacks(execute=True) as callbacks:
                 discussion = DiscussionService.create_discussion(
                     title="After commit discussion event",
@@ -244,7 +298,7 @@ class DiscussionApiTests(TestCase):
                 )
 
         self.assertEqual(len(callbacks), 1)
-        event = mocked_bus.dispatch.call_args.args[0]
+        event = next(item for item in events if item.__class__.__name__ == "DiscussionCreatedEvent")
         self.assertEqual(event.discussion_id, discussion.id)
 
     def test_create_discussion_applies_runtime_private_checkers(self):
@@ -269,8 +323,6 @@ class DiscussionApiTests(TestCase):
         from types import SimpleNamespace
 
         from bias_core.extensions import ModelPrivateExtender
-        from bias_core.extensions.application import ExtensionApplication
-
         app = ExtensionApplication()
         ModelPrivateExtender(Discussion).checker(
             lambda instance: "private" in instance.title.lower()
@@ -293,8 +345,6 @@ class DiscussionApiTests(TestCase):
         self.assertFalse(discussion.is_private)
 
     def test_view_private_policy_allows_private_discussion_visibility(self):
-        from bias_core.extensions.application import ExtensionApplication
-
         discussion = DiscussionService.create_discussion(
             title="Private visible through policy",
             content="Initial post",
@@ -313,7 +363,6 @@ class DiscussionApiTests(TestCase):
             self.assertTrue(Discussion.objects.filter(build_discussion_visibility_q(self.reader), id=discussion.id).exists())
 
     def test_view_private_scoper_allows_matching_private_discussion_visibility(self):
-        from bias_core.extensions.application import ExtensionApplication
         from bias_core.extensions import ExtensionModelVisibilityDefinition
 
         allowed = DiscussionService.create_discussion(
@@ -386,7 +435,6 @@ class DiscussionApiTests(TestCase):
         self.assertFalse(DiscussionService._can_view_discussion(discussion, blocked))
 
     def test_hide_scoper_allows_matching_hidden_discussion_visibility(self):
-        from bias_core.extensions.application import ExtensionApplication
         from bias_core.extensions import ExtensionModelVisibilityDefinition
 
         allowed = DiscussionService.create_discussion(
@@ -447,13 +495,14 @@ class DiscussionApiTests(TestCase):
         discussion.approval_status = Discussion.APPROVAL_PENDING
         discussion.save(update_fields=["approval_status"])
 
-        mocked_bus = Mock()
-        with patch("bias_core.domain_events.get_forum_event_bus", return_value=mocked_bus):
+        events, dispatch_patch = capture_runtime_events()
+        with dispatch_patch:
             with self.captureOnCommitCallbacks(execute=True) as callbacks:
                 DiscussionService.approve_discussion(discussion, admin, note="ok")
 
-        self.assertEqual(len(callbacks), 1)
-        self.assertEqual(mocked_bus.dispatch.call_args.args[0].discussion_id, discussion.id)
+        self.assertGreaterEqual(len(callbacks), 1)
+        event = next(item for item in events if item.__class__.__name__ == "DiscussionApprovedEvent")
+        self.assertEqual(event.discussion_id, discussion.id)
 
     def test_approve_discussion_applies_runtime_lifecycle_on_first_approval(self):
         admin = User.objects.create_superuser(
@@ -1022,6 +1071,128 @@ class DiscussionApiTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["last_read_post_number"], 2)
         self.assertEqual(payload["unread_count"], 1)
+
+    def test_runtime_mark_discussion_read_does_not_move_progress_backwards(self):
+        discussion = DiscussionService.create_discussion(
+            title="Runtime read state monotonic",
+            content="Initial post",
+            user=self.author,
+        )
+        create_runtime_post(
+            discussion_id=discussion.id,
+            content="Reply one",
+            user=self.author,
+        )
+        create_runtime_post(
+            discussion_id=discussion.id,
+            content="Reply two",
+            user=self.author,
+        )
+        DiscussionService.update_read_state(discussion.id, self.reader, 3)
+
+        changed = mark_runtime_discussion_read(
+            discussion_id=discussion.id,
+            user=self.reader,
+            last_read_post_number=1,
+        )
+
+        self.assertTrue(changed)
+        state = DiscussionUser.objects.get(discussion=discussion, user=self.reader)
+        self.assertEqual(state.last_read_post_number, 3)
+
+    def test_runtime_mark_discussion_read_can_update_subscription_without_resetting_progress(self):
+        discussion = DiscussionService.create_discussion(
+            title="Runtime read state subscription",
+            content="Initial post",
+            user=self.author,
+        )
+        create_runtime_post(
+            discussion_id=discussion.id,
+            content="Reply one",
+            user=self.author,
+        )
+        DiscussionService.update_read_state(discussion.id, self.reader, 2)
+
+        changed = mark_runtime_discussion_read(
+            discussion_id=discussion.id,
+            user=self.reader,
+            last_read_post_number=1,
+            subscribed=True,
+        )
+
+        self.assertTrue(changed)
+        state = DiscussionUser.objects.get(discussion=discussion, user=self.reader)
+        self.assertEqual(state.last_read_post_number, 2)
+        self.assertTrue(state.is_subscribed)
+
+    def test_runtime_follow_discussion_does_not_move_progress_backwards(self):
+        discussion = DiscussionService.create_discussion(
+            title="Runtime follow state monotonic",
+            content="Initial post",
+            user=self.author,
+        )
+        create_runtime_post(
+            discussion_id=discussion.id,
+            content="Reply one",
+            user=self.author,
+        )
+        DiscussionService.update_read_state(discussion.id, self.reader, 2)
+
+        changed = follow_runtime_discussion(
+            discussion_id=discussion.id,
+            user_id=self.reader.id,
+            last_read_post_number=1,
+        )
+
+        self.assertTrue(changed)
+        state = DiscussionUser.objects.get(discussion=discussion, user=self.reader)
+        self.assertEqual(state.last_read_post_number, 2)
+        self.assertTrue(state.is_subscribed)
+
+    def test_update_discussion_read_state_dispatches_user_read_event_when_progress_advances(self):
+        discussion = DiscussionService.create_discussion(
+            title="Read event discussion",
+            content="Initial post",
+            user=self.author,
+        )
+        create_runtime_post(
+            discussion_id=discussion.id,
+            content="Reply one",
+            user=self.author,
+        )
+
+        events, dispatch_patch = capture_runtime_events()
+        with dispatch_patch:
+            with self.captureOnCommitCallbacks(execute=True):
+                state = DiscussionService.update_read_state(discussion.id, self.reader, 2)
+
+        event = next(item for item in events if item.__class__.__name__ == "DiscussionUserReadEvent")
+        self.assertEqual(event.discussion_id, discussion.id)
+        self.assertEqual(event.user_id, self.reader.id)
+        self.assertEqual(event.last_read_post_number, state.last_read_post_number)
+
+    def test_update_discussion_read_state_does_not_touch_timestamp_or_event_when_not_advanced(self):
+        discussion = DiscussionService.create_discussion(
+            title="Read state unchanged",
+            content="Initial post",
+            user=self.author,
+        )
+        create_runtime_post(
+            discussion_id=discussion.id,
+            content="Reply one",
+            user=self.author,
+        )
+        state = DiscussionService.update_read_state(discussion.id, self.reader, 2)
+        original_last_read_at = state.last_read_at
+
+        events, dispatch_patch = capture_runtime_events()
+        with dispatch_patch:
+            with self.captureOnCommitCallbacks(execute=True):
+                next_state = DiscussionService.update_read_state(discussion.id, self.reader, 1)
+
+        self.assertEqual(next_state.last_read_post_number, 2)
+        self.assertEqual(next_state.last_read_at, original_last_read_at)
+        self.assertFalse(any(item.__class__.__name__ == "DiscussionUserReadEvent" for item in events))
 
     def test_suspended_user_cannot_create_discussion(self):
         self.author.suspended_until = timezone.now() + timedelta(days=1)

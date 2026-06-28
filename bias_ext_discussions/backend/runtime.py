@@ -8,13 +8,20 @@ def discussion_service_provider() -> dict:
         "model": Discussion,
         "state_model": DiscussionUser,
         "approval_approved": Discussion.APPROVAL_APPROVED,
+        "event_types": discussion_event_type_aliases(),
         "create": DiscussionService.create_discussion,
         "update": DiscussionService.update_discussion,
         "delete": DiscussionService.delete_discussion,
         "set_hidden_state": DiscussionService.set_hidden_state,
         "list": DiscussionService.get_discussion_list,
+        "get_visible_ids": _get_visible_discussion_ids,
+        "has_visibility": _has_discussion_visibility,
         "approve": DiscussionService.approve_discussion,
         "reject": DiscussionService.reject_discussion,
+        "list_approval_queue": _list_approval_queue,
+        "count_pending_approvals": _count_pending_approvals,
+        "pending_first_post_ids": _pending_first_post_ids,
+        "process_approval": _process_approval,
         "can_edit": DiscussionService.can_edit_discussion,
         "can_delete": DiscussionService.can_delete_discussion,
         "can_reply": DiscussionService.can_reply_discussion,
@@ -24,15 +31,145 @@ def discussion_service_provider() -> dict:
         "refresh_approved_stats": _refresh_approved_stats,
         "reply_notification_context": _reply_notification_context,
         "is_subscribed": _is_subscribed,
-        "set_subscription": _set_subscription,
-        "follow_if_enabled": _follow_if_enabled,
+        "set_subscription": DiscussionService.set_subscription,
+        "follow_if_enabled": DiscussionService.follow_discussion,
         "mark_read": _mark_read,
+        "clamp_read_states": DiscussionService.clamp_read_states,
     }
+
+
+def discussion_event_type_aliases() -> dict[str, type]:
+    from bias_ext_discussions.backend.events import (
+        DiscussionApprovedEvent,
+        DiscussionCreatedEvent,
+        DiscussionHiddenEvent,
+        DiscussionLockedEvent,
+        DiscussionRejectedEvent,
+        DiscussionRenamedEvent,
+        DiscussionResubmittedEvent,
+        DiscussionStickyChangedEvent,
+        DiscussionUserReadEvent,
+    )
+
+    return {
+        "discussions.discussion.created": DiscussionCreatedEvent,
+        "discussions.discussion.approved": DiscussionApprovedEvent,
+        "discussions.discussion.renamed": DiscussionRenamedEvent,
+        "discussions.discussion.locked": DiscussionLockedEvent,
+        "discussions.discussion.sticky_changed": DiscussionStickyChangedEvent,
+        "discussions.discussion.hidden": DiscussionHiddenEvent,
+        "discussions.discussion.rejected": DiscussionRejectedEvent,
+        "discussions.discussion.resubmitted": DiscussionResubmittedEvent,
+        "discussions.discussion.user_read": DiscussionUserReadEvent,
+    }
+
+
+discussion_service_provider.event_types = discussion_event_type_aliases
 
 
 def discussion_timeline_provider() -> dict:
     return {
         "create_from_builder": create_timeline_from_builder,
+    }
+
+
+def _list_approval_queue() -> list[dict]:
+    from bias_ext_discussions.backend.models import Discussion
+
+    discussions = Discussion.objects.filter(
+        approval_status=Discussion.APPROVAL_PENDING,
+    ).select_related("user").order_by("-created_at")
+    return [_serialize_approval_item(discussion) for discussion in discussions]
+
+
+def _count_pending_approvals() -> int:
+    from bias_ext_discussions.backend.models import Discussion
+
+    return Discussion.objects.filter(approval_status=Discussion.APPROVAL_PENDING).count()
+
+
+def _pending_first_post_ids() -> list[int]:
+    from bias_ext_discussions.backend.models import Discussion
+
+    return list(
+        Discussion.objects.filter(approval_status=Discussion.APPROVAL_PENDING)
+        .exclude(first_post_id__isnull=True)
+        .values_list("first_post_id", flat=True)
+    )
+
+
+def _get_visible_discussion_ids(user=None, *, ability: str = "view", context: dict | None = None):
+    from bias_core.extensions.platform import apply_model_visibility_scope
+    from bias_ext_discussions.backend.models import Discussion
+
+    resolved_context = dict(context or {})
+    return apply_model_visibility_scope(
+        Discussion,
+        Discussion.objects.all(),
+        user=user,
+        ability=str(ability or "view"),
+        context=resolved_context,
+    ).values("id")
+
+
+def _has_discussion_visibility(*, ability: str | None = None) -> bool:
+    from bias_core.extensions.runtime import has_runtime_model_visibility
+    from bias_ext_discussions.backend.models import Discussion
+
+    return has_runtime_model_visibility(Discussion, ability=ability)
+
+
+def _process_approval(*, content_id: int, action: str, actor, note: str = "") -> dict:
+    from django.core.exceptions import ValidationError
+    from django.shortcuts import get_object_or_404
+    from bias_ext_discussions.backend.models import Discussion
+    from bias_ext_discussions.backend.services import DiscussionService
+
+    discussion = get_object_or_404(
+        Discussion.objects.select_related("user"),
+        id=content_id,
+        approval_status=Discussion.APPROVAL_PENDING,
+    )
+    if action == "approve":
+        processed = DiscussionService.approve_discussion(discussion, actor, note=note)
+    elif action == "reject":
+        processed = DiscussionService.reject_discussion(discussion, actor, note=note)
+    else:
+        raise ValidationError("无效的审核动作")
+    return _serialize_approval_item(processed)
+
+
+def _serialize_approval_item(discussion) -> dict:
+    from bias_core.extensions.runtime import get_runtime_first_post
+
+    first_post = get_runtime_first_post(discussion)
+    return {
+        "type": "discussion",
+        "id": discussion.id,
+        "title": discussion.title,
+        "content": first_post.content if first_post else "",
+        "created_at": discussion.created_at,
+        "approval_status": discussion.approval_status,
+        "approval_note": discussion.approval_note,
+        "author": _serialize_user(getattr(discussion, "user", None)),
+        "discussion": {
+            "id": discussion.id,
+            "title": discussion.title,
+        },
+        "post": {
+            "id": first_post.id,
+            "number": first_post.number,
+        } if first_post else None,
+    }
+
+
+def _serialize_user(user) -> dict | None:
+    if user is None:
+        return None
+    return {
+        "id": user.id,
+        "username": user.username,
+        "display_name": user.display_name,
     }
 
 
@@ -107,14 +244,14 @@ def _refresh_approved_stats(discussion, *, discussion_counted_post_types):
 
 
 def _reply_notification_context(discussion_id: int, post_id: int, from_user):
-    from bias_core.extensions.runtime import get_runtime_post_number
+    from bias_core.extensions.runtime import get_runtime_discussion_post_number
     from bias_ext_discussions.backend.models import Discussion, DiscussionUser
 
     try:
         discussion = Discussion.objects.select_related("user").get(id=discussion_id)
     except Discussion.DoesNotExist:
         return None
-    post_number = get_runtime_post_number(post_id)
+    post_number = get_runtime_discussion_post_number(post_id)
     if post_number is None:
         return None
 
@@ -156,85 +293,28 @@ def _is_subscribed(discussion, user) -> bool:
     ).exists()
 
 
-def _set_subscription(discussion_id: int, user, subscribed: bool) -> bool:
-    from django.utils import timezone
-    from bias_core.extensions.platform import can_view_model_instance
-    from django.core.exceptions import PermissionDenied
-    from django.db import IntegrityError
-    from bias_ext_discussions.backend.models import Discussion, DiscussionUser
-
-    discussion = Discussion.objects.get(id=discussion_id)
-    if not can_view_model_instance(Discussion, discussion, user=user, ability="view"):
-        raise PermissionDenied("没有权限查看此讨论")
-
-    try:
-        state, _ = DiscussionUser.objects.get_or_create(
-            discussion=discussion,
-            user=user,
-            defaults={
-                "last_read_at": timezone.now(),
-                "last_read_post_number": discussion.last_post_number or 0,
-            },
-        )
-    except IntegrityError:
-        state = DiscussionUser.objects.get(
-            discussion=discussion,
-            user=user,
-        )
-    if state.is_subscribed == subscribed:
-        return False
-    state.is_subscribed = subscribed
-    state.save(update_fields=["is_subscribed"])
-    return True
-
-
-def _follow_if_enabled(
-    *,
-    discussion_id: int,
-    user_id: int,
-    last_read_post_number: int | None = None,
-) -> bool:
-    from django.utils import timezone
-    from bias_ext_discussions.backend.models import DiscussionUser
-
-    defaults = {"is_subscribed": True}
-    if last_read_post_number:
-        defaults["last_read_at"] = timezone.now()
-        defaults["last_read_post_number"] = last_read_post_number
-
-    DiscussionUser.objects.update_or_create(
-        discussion_id=discussion_id,
-        user_id=user_id,
-        defaults=defaults,
-    )
-    return True
-
-
 def _mark_read(
     *,
     discussion_id: int,
     user,
     last_read_post_number: int,
     subscribed: bool | None = None,
+    require_view: bool = True,
 ) -> bool:
     if not user or not getattr(user, "is_authenticated", False):
         return False
 
-    from django.utils import timezone
-    from bias_ext_discussions.backend.models import DiscussionUser
+    from bias_ext_discussions.backend.services import DiscussionService
 
-    defaults = {
-        "last_read_at": timezone.now(),
-        "last_read_post_number": int(last_read_post_number or 0),
-    }
-    if subscribed is not None:
-        defaults["is_subscribed"] = bool(subscribed)
-
-    DiscussionUser.objects.update_or_create(
-        discussion_id=int(discussion_id),
-        user=user,
-        defaults=defaults,
+    state = DiscussionService.update_read_state(
+        int(discussion_id),
+        user,
+        int(last_read_post_number or 0),
+        require_view=require_view,
     )
+    if subscribed is not None and state.is_subscribed != bool(subscribed):
+        state.is_subscribed = bool(subscribed)
+        state.save(update_fields=["is_subscribed"])
     return True
 
 

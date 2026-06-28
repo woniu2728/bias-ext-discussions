@@ -17,6 +17,8 @@ class DiscussionApprovedEvent(DomainEvent):
     discussion_id: int
     admin_user_id: int
     note: str = ""
+    actor_user_id: int | None = None
+    discussion_title: str = ""
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,8 @@ class DiscussionRejectedEvent(DomainEvent):
     admin_user_id: int
     note: str = ""
     previous_status: str = ""
+    actor_user_id: int | None = None
+    discussion_title: str = ""
 
 
 @dataclass(frozen=True)
@@ -61,4 +65,12 @@ class DiscussionResubmittedEvent(DomainEvent):
     discussion_id: int
     actor_user_id: int
     previous_status: str = ""
+    discussion_title: str = ""
+
+
+@dataclass(frozen=True)
+class DiscussionUserReadEvent(DomainEvent):
+    discussion_id: int
+    user_id: int
+    last_read_post_number: int
 

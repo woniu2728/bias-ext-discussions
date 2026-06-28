@@ -5,7 +5,7 @@ from django.core.exceptions import PermissionDenied
 from bias_core.extensions.platform import api_error
 from bias_core.extensions.platform import log_admin_action
 from bias_core.extensions.runtime import get_runtime_resource_registry
-from bias_core.extensions.runtime import get_runtime_first_post
+from bias_core.extensions.runtime import get_runtime_first_post, resolve_runtime_discussion_post_content_html
 from bias_core.extensions.platform import ResourceQueryOptions, merge_resource_includes, parse_resource_query_options
 from bias_core.extensions import ResourceEndpointDefinition
 from bias_core.extensions.platform import PaginationService
@@ -18,7 +18,6 @@ from bias_ext_discussions.backend.schemas import (
     DiscussionUpdateSchema,
 )
 from bias_ext_discussions.backend.services import DiscussionService
-from bias_core.extensions.runtime import resolve_runtime_post_content_html
 
 
 def get_resource_registry():
@@ -354,7 +353,7 @@ def dispatch_discussion_show(context):
                 "id": post.id,
                 "number": post.number,
                 "content": post.content,
-                "content_html": resolve_runtime_post_content_html(post),
+                "content_html": resolve_runtime_discussion_post_content_html(post),
                 "user": serialize_runtime_user(post.user, resource="user_summary"),
                 "created_at": post.created_at,
                 "updated_at": post.updated_at,

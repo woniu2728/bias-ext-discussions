@@ -16,22 +16,20 @@ from bias_ext_discussions.backend.events import (
     DiscussionStickyChangedEvent,
 )
 from bias_core.extensions.runtime import (
-    get_runtime_discussion_lifecycle_service,
-    get_runtime_post_lifecycle_service,
-    get_runtime_resource_registry,
-    refresh_runtime_model_private,
-)
-from bias_ext_discussions.backend.models import Discussion, DiscussionUser
-from bias_core.extensions.runtime import (
     approve_runtime_first_post,
     create_runtime_first_post,
     delete_runtime_discussion_posts,
     get_runtime_approved_reply_counts_by_author,
+    get_runtime_discussion_lifecycle_service,
     get_runtime_first_post,
+    get_runtime_post_lifecycle_service,
+    get_runtime_resource_registry,
     reject_runtime_first_post,
+    refresh_runtime_model_private,
     resubmit_runtime_first_post,
     update_runtime_first_post_content,
 )
+from bias_ext_discussions.backend.models import Discussion, DiscussionUser
 from bias_core.extensions.runtime import (
     apply_runtime_user_comment_count_deltas,
     ensure_runtime_forum_permission,
@@ -286,7 +284,11 @@ def update_discussion(
     ensure_runtime_user_not_suspended(user, "编辑讨论")
     discussion = Discussion.objects.get(id=discussion_id)
 
-    if not can_edit_discussion_cb(discussion, user):
+    core_update_requested = any(
+        value is not None
+        for value in (title, content, is_locked, is_sticky, is_hidden)
+    )
+    if core_update_requested and not can_edit_discussion_cb(discussion, user):
         raise PermissionDenied("没有权限编辑此讨论")
 
     extension_payload = dict(extension_payload or {})
@@ -380,6 +382,7 @@ def update_discussion(
                     discussion_id=discussion.id,
                     actor_user_id=user.id,
                     previous_status=previous_approval_status,
+                    discussion_title=discussion.title,
                 )
             )
 
@@ -511,6 +514,8 @@ def approve_discussion(
                     discussion_id=discussion.id,
                     admin_user_id=admin_user.id,
                     note=note,
+                    actor_user_id=getattr(discussion, "user_id", None),
+                    discussion_title=discussion.title,
                 )
             )
         _apply_discussion_approved_extensions(
@@ -581,6 +586,8 @@ def reject_discussion(
                     admin_user_id=admin_user.id,
                     note=note,
                     previous_status=previous_status,
+                    actor_user_id=getattr(discussion, "user_id", None),
+                    discussion_title=discussion.title,
                 )
             )
         _apply_discussion_rejected_extensions(

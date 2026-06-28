@@ -11,7 +11,8 @@ from django.db import IntegrityError
 from django.db.models import F
 from django.utils import timezone
 
-from bias_core.extensions.platform import can_view_model_instance
+from bias_core.extensions.platform import can_view_model_instance, dispatch_forum_event_after_commit
+from bias_ext_discussions.backend.events import DiscussionUserReadEvent
 from bias_ext_discussions.backend.visibility import apply_discussion_visibility_scope
 from bias_ext_discussions.backend.models import Discussion, DiscussionUser
 
@@ -255,40 +256,125 @@ def mark_all_as_read(user: Any):
     return now
 
 
-def update_read_state(discussion_id: int, user: Any, last_read_post_number: int) -> DiscussionUser:
+def update_read_state(
+    discussion_id: int,
+    user: Any,
+    last_read_post_number: int,
+    *,
+    require_view: bool = True,
+) -> DiscussionUser:
     discussion = Discussion.objects.get(id=discussion_id)
-    if not can_view_discussion(discussion, user):
+    if require_view and not can_view_discussion(discussion, user):
         raise PermissionDenied("没有权限查看此讨论")
 
     clamped_number = max(1, min(last_read_post_number, discussion.last_post_number or 1))
+    now = timezone.now()
+    created = False
     try:
         state, _ = DiscussionUser.objects.get_or_create(
             discussion=discussion,
             user=user,
             defaults={
-                "last_read_at": timezone.now(),
+                "last_read_at": now,
                 "last_read_post_number": clamped_number,
             },
         )
+        created = _
     except IntegrityError:
         state = DiscussionUser.objects.get(
             discussion=discussion,
             user=user,
         )
 
-    next_number = max(state.last_read_post_number, clamped_number)
+    previous_number = int(state.last_read_post_number or 0)
+    next_number = max(previous_number, clamped_number)
     update_fields = []
-    if next_number != state.last_read_post_number:
+    advanced = next_number > previous_number
+
+    if advanced:
         state.last_read_post_number = next_number
         update_fields.append("last_read_post_number")
-
-    now = timezone.now()
-    if not state.last_read_at or next_number >= state.last_read_post_number:
         state.last_read_at = now
         update_fields.append("last_read_at")
 
     if update_fields:
         state.save(update_fields=update_fields)
 
+    if created or advanced:
+        dispatch_forum_event_after_commit(
+            DiscussionUserReadEvent(
+                discussion_id=discussion.id,
+                user_id=user.id,
+                last_read_post_number=state.last_read_post_number,
+            )
+        )
+
     return state
+
+
+def clamp_read_states(discussion_id: int, last_post_number: int | None) -> int:
+    normalized_last_post_number = max(int(last_post_number or 0), 0)
+    return DiscussionUser.objects.filter(
+        discussion_id=discussion_id,
+        last_read_post_number__gt=normalized_last_post_number,
+    ).update(last_read_post_number=normalized_last_post_number)
+
+
+def follow_discussion(
+    *,
+    discussion_id: int,
+    user_id: int,
+    last_read_post_number: int | None = None,
+) -> bool:
+    state, _ = DiscussionUser.objects.get_or_create(
+        discussion_id=discussion_id,
+        user_id=user_id,
+        defaults={"is_subscribed": True},
+    )
+
+    changed = False
+    update_fields = []
+    if not state.is_subscribed:
+        state.is_subscribed = True
+        update_fields.append("is_subscribed")
+        changed = True
+
+    if last_read_post_number:
+        previous_number = int(state.last_read_post_number or 0)
+        next_number = max(previous_number, int(last_read_post_number))
+        if next_number > previous_number:
+            state.last_read_post_number = next_number
+            state.last_read_at = timezone.now()
+            update_fields.extend(["last_read_post_number", "last_read_at"])
+            changed = True
+
+    if update_fields:
+        state.save(update_fields=update_fields)
+
+    return changed
+
+
+def set_subscription(
+    discussion_id: int,
+    user: Any,
+    subscribed: bool,
+) -> bool:
+    discussion = Discussion.objects.get(id=discussion_id)
+    if not can_view_discussion(discussion, user):
+        raise PermissionDenied("没有权限查看此讨论")
+
+    state, _ = DiscussionUser.objects.get_or_create(
+        discussion=discussion,
+        user=user,
+        defaults={
+            "last_read_at": timezone.now(),
+            "last_read_post_number": discussion.last_post_number or 0,
+        },
+    )
+    if state.is_subscribed == subscribed:
+        return False
+
+    state.is_subscribed = subscribed
+    state.save(update_fields=["is_subscribed"])
+    return True
 

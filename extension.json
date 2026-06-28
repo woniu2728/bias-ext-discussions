@@ -10,11 +10,7 @@
   ],
   "dependencies": [
     "core",
-    "tags",
     "users"
-  ],
-  "optional_dependencies": [
-    "posts"
   ],
   "provides": [
     "discussions",
