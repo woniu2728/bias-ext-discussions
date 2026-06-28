@@ -280,7 +280,9 @@ def update_discussion(
     is_locked: Optional[bool] = None,
     is_sticky: Optional[bool] = None,
     is_hidden: Optional[bool] = None,
+    can_rename_discussion_cb,
     can_edit_discussion_cb,
+    can_hide_discussion_cb,
     render_markdown_cb,
     set_locked_state_cb,
     set_sticky_state_cb,
@@ -289,12 +291,18 @@ def update_discussion(
     ensure_runtime_user_not_suspended(user, "编辑讨论")
     discussion = Discussion.objects.get(id=discussion_id)
 
-    core_update_requested = any(
+    if title is not None and title != discussion.title and not can_rename_discussion_cb(discussion, user):
+        raise PermissionDenied("没有权限修改讨论标题")
+
+    edit_update_requested = any(
         value is not None
-        for value in (title, content, is_locked, is_sticky, is_hidden)
+        for value in (content, is_locked, is_sticky)
     )
-    if core_update_requested and not can_edit_discussion_cb(discussion, user):
+    if edit_update_requested and not can_edit_discussion_cb(discussion, user):
         raise PermissionDenied("没有权限编辑此讨论")
+
+    if is_hidden is not None and not can_hide_discussion_cb(discussion, user):
+        raise PermissionDenied("没有权限隐藏/显示讨论")
 
     extension_payload = dict(extension_payload or {})
 
@@ -425,9 +433,6 @@ def set_hidden_state(
     *,
     approved_reply_counts_by_author_cb,
 ) -> Discussion:
-    if not user.is_staff:
-        raise PermissionDenied("没有权限隐藏/显示讨论")
-
     was_hidden = discussion.hidden_at is not None
     if was_hidden == is_hidden:
         return discussion

@@ -457,7 +457,9 @@ class DiscussionService:
             is_locked=is_locked,
             is_sticky=is_sticky,
             is_hidden=is_hidden,
+            can_rename_discussion_cb=DiscussionService.can_rename_discussion,
             can_edit_discussion_cb=DiscussionService.can_edit_discussion,
+            can_hide_discussion_cb=DiscussionService.can_hide_discussion,
             render_markdown_cb=DiscussionService._render_markdown,
             set_locked_state_cb=DiscussionService.set_locked_state,
             set_sticky_state_cb=DiscussionService.set_sticky_state,
@@ -466,6 +468,8 @@ class DiscussionService:
 
     @staticmethod
     def set_hidden_state(discussion: Discussion, user: User, is_hidden: bool) -> Discussion:
+        if not DiscussionService.can_hide_discussion(discussion, user):
+            raise PermissionDenied("没有权限隐藏/显示讨论")
         return service_lifecycle.set_hidden_state(
             discussion,
             user,
@@ -552,6 +556,64 @@ class DiscussionService:
         allowed = bool(model_policy)
         return bool(evaluate_extension_policy(
             "discussion.edit",
+            default=allowed,
+            user=user,
+            discussion=discussion,
+        ))
+
+    @staticmethod
+    def can_rename_discussion(discussion: Discussion, user: User) -> bool:
+        """检查用户是否可以修改讨论标题"""
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_suspended:
+            return False
+        allowed = False
+        if has_runtime_forum_permission(user, "discussion.rename"):
+            allowed = True
+        elif discussion.user_id == user.id:
+            allowed = has_runtime_forum_permission(user, "discussion.reply")
+        model_policy = evaluate_runtime_model_policy(
+            "rename",
+            user=user,
+            model=discussion,
+            default=allowed,
+            discussion=discussion,
+        )
+        if model_policy is False:
+            return False
+        allowed = bool(model_policy)
+        return bool(evaluate_extension_policy(
+            "discussion.rename",
+            default=allowed,
+            user=user,
+            discussion=discussion,
+        ))
+
+    @staticmethod
+    def can_hide_discussion(discussion: Discussion, user: User) -> bool:
+        """检查用户是否可以隐藏或恢复讨论"""
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_suspended:
+            return False
+        allowed = False
+        if has_runtime_forum_permission(user, "discussion.hide"):
+            allowed = True
+        elif discussion.user_id == user.id:
+            allowed = has_runtime_forum_permission(user, "discussion.deleteOwn")
+        model_policy = evaluate_runtime_model_policy(
+            "hide",
+            user=user,
+            model=discussion,
+            default=allowed,
+            discussion=discussion,
+        )
+        if model_policy is False:
+            return False
+        allowed = bool(model_policy)
+        return bool(evaluate_extension_policy(
+            "discussion.hide",
             default=allowed,
             user=user,
             discussion=discussion,

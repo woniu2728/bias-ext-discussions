@@ -1371,7 +1371,6 @@ class DiscussionApiTests(TestCase):
         response = self.client.patch(
             f"/api/discussions/{discussion.id}",
             data=json.dumps({
-                "title": "Updated title",
                 "content": "Updated content",
             }),
             content_type="application/json",
@@ -1381,10 +1380,34 @@ class DiscussionApiTests(TestCase):
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"], "没有权限编辑此讨论")
 
+    def test_owner_with_edit_own_permission_cannot_rename_without_rename_permission(self):
+        member_group = Group.objects.create(name="DiscussionAuthorEditButNoRename", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        Permission.objects.create(group=member_group, permission="discussion.editOwn")
+        self.author.user_groups.add(member_group)
+
+        discussion = DiscussionService.create_discussion(
+            title="Original title",
+            content="Original content",
+            user=self.author,
+        )
+
+        response = self.client.patch(
+            f"/api/discussions/{discussion.id}",
+            data=json.dumps({
+                "title": "Updated title",
+            }),
+            content_type="application/json",
+            **self.auth_header(self.author),
+        )
+
+        self.assertEqual(response.status_code, 403, response.content)
+        self.assertEqual(response.json()["error"], "没有权限修改讨论标题")
+
     def test_updating_discussion_title_creates_discussion_renamed_event_post(self):
         member_group = Group.objects.create(name="DiscussionRenameAuthor", color="#4d698e")
         Permission.objects.create(group=member_group, permission="startDiscussion")
-        Permission.objects.create(group=member_group, permission="discussion.editOwn")
+        Permission.objects.create(group=member_group, permission="discussion.rename")
         self.author.user_groups.add(member_group)
 
         discussion = DiscussionService.create_discussion(
@@ -1698,7 +1721,6 @@ class DiscussionApiTests(TestCase):
         response = self.client.patch(
             f"/api/discussions/{discussion.id}",
             data=json.dumps({
-                "title": "Edited by moderator",
                 "content": "Edited content",
             }),
             content_type="application/json",
@@ -1706,7 +1728,9 @@ class DiscussionApiTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(response.json()["title"], "Edited by moderator")
+        self.assertEqual(response.json()["title"], "Original title")
+        first_post = Post.objects.get(id=discussion.first_post_id)
+        self.assertEqual(first_post.content, "Edited content")
 
     def test_delete_pending_discussion_does_not_decrement_author_discussion_count(self):
         admin = User.objects.create_superuser(
