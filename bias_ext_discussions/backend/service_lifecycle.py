@@ -614,6 +614,7 @@ def reject_discussion(
             context={
                 "admin_user_id": admin_user.id,
                 "previous_status": previous_status,
+                "was_counted": was_counted,
             },
         )
 
