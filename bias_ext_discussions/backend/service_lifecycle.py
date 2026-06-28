@@ -129,22 +129,24 @@ def _apply_discussion_resource_relationships(
     user,
     creating: bool,
     actor_user_id: int,
-) -> None:
+) -> dict:
+    context = {
+        "user": user,
+        "actor_user_id": actor_user_id,
+    }
     relationship_payload = _discussion_relationship_payload(payload)
     if not relationship_payload:
-        return
+        return context
+    context["payload"] = relationship_payload
     registry = get_runtime_resource_registry()
     registry.apply_resource_payload(
         "discussion",
         discussion,
         {},
-        {
-            "payload": relationship_payload,
-            "user": user,
-            "actor_user_id": actor_user_id,
-        },
+        context,
         creating=creating,
     )
+    return context
 
 
 def _discussion_relationship_payload(payload: dict) -> dict:
@@ -305,6 +307,11 @@ def update_discussion(
             payload=extension_payload,
         )
         previous_title = discussion.title
+        was_counted = (
+            discussion.approval_status == Discussion.APPROVAL_APPROVED
+            and discussion.hidden_at is None
+            and not discussion.is_private
+        )
         first_post = None
 
         if content is not None:
@@ -318,16 +325,7 @@ def update_discussion(
         if title is not None:
             discussion.title = title
 
-        _apply_discussion_update_extensions(
-            discussion_lifecycle,
-            discussion=discussion,
-            states=extension_states,
-            context={
-                "actor_user_id": user.id,
-                "payload": extension_payload,
-            },
-        )
-        _apply_discussion_resource_relationships(
+        relationship_context = _apply_discussion_resource_relationships(
             discussion,
             payload=extension_payload,
             user=user,
@@ -337,6 +335,22 @@ def update_discussion(
         if first_post is None and discussion.first_post_id:
             first_post = get_runtime_first_post(discussion)
         _refresh_discussion_private_state(discussion, first_post=first_post)
+        is_counted = (
+            discussion.approval_status == Discussion.APPROVAL_APPROVED
+            and discussion.hidden_at is None
+            and not discussion.is_private
+        )
+        _apply_discussion_update_extensions(
+            discussion_lifecycle,
+            discussion=discussion,
+            states=extension_states,
+            context={
+                **relationship_context,
+                "payload": extension_payload,
+                "was_counted": was_counted,
+                "is_counted": is_counted,
+            },
+        )
         if first_post is not None:
             first_post.save(update_fields=["is_private"])
             if content is not None:
