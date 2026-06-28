@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from bias_core.extensions import ResourceDefinition, ResourceFieldDefinition
+from django.db.models import Prefetch
+
+from bias_core.extensions import ResourceDefinition, ResourceFieldDefinition, ResourceRelationshipDefinition
 
 
 def discussion_resource_definitions():
@@ -50,6 +52,29 @@ def discussion_resource_field_definitions():
             module_id="discussions",
             resolver=resolve_discussion_can_hide,
             description="当前用户是否可以隐藏或恢复讨论。",
+        ),
+    )
+
+
+def discussion_resource_relationship_definitions():
+    return (
+        ResourceRelationshipDefinition(
+            resource="discussion",
+            relationship="first_post",
+            module_id="discussions",
+            resolver=resolve_discussion_first_post,
+            description="讨论首帖资源。",
+            resource_type="post",
+            preload_resolver=discussion_post_preload_resolver,
+        ),
+        ResourceRelationshipDefinition(
+            resource="discussion",
+            relationship="last_post",
+            module_id="discussions",
+            resolver=resolve_discussion_last_post,
+            description="讨论最后一条帖子资源。",
+            resource_type="post",
+            preload_resolver=discussion_post_preload_resolver,
         ),
     )
 
@@ -120,4 +145,43 @@ def resolve_discussion_can_hide(discussion, context: dict) -> bool:
 
     user = context.get("user")
     return bool(user and DiscussionService.can_hide_discussion(discussion, user))
+
+
+def discussion_post_preload_resolver(context: dict):
+    Post = _runtime_post_model()
+    if Post is None:
+        return (), ()
+    post_queryset = Post.objects.select_related("user", "edited_user", "discussion")
+    return (), (
+        Prefetch("posts", queryset=post_queryset, to_attr="resource_posts"),
+    )
+
+
+def resolve_discussion_first_post(discussion, context: dict):
+    return _resolve_discussion_post_by_id(discussion, getattr(discussion, "first_post_id", None))
+
+
+def resolve_discussion_last_post(discussion, context: dict):
+    return _resolve_discussion_post_by_id(discussion, getattr(discussion, "last_post_id", None))
+
+
+def _resolve_discussion_post_by_id(discussion, post_id: int | None):
+    if not post_id:
+        return None
+    prefetched_posts = getattr(discussion, "resource_posts", None)
+    if prefetched_posts is not None:
+        for post in prefetched_posts:
+            if getattr(post, "id", None) == post_id:
+                return post
+        return None
+    Post = _runtime_post_model()
+    if Post is None:
+        return None
+    return Post.objects.select_related("user", "edited_user", "discussion").filter(id=post_id).first()
+
+
+def _runtime_post_model():
+    from bias_core.extensions.runtime import get_runtime_post_model_or_none
+
+    return get_runtime_post_model_or_none()
 

@@ -653,6 +653,38 @@ class DiscussionApiTests(TestCase):
         self.assertEqual(payload["user"]["id"], self.author.id)
         self.assertEqual(payload["last_posted_user"]["id"], self.author.id)
 
+    def test_discussion_detail_includes_first_and_last_post_resources(self):
+        member_group = Group.objects.create(name="DiscussionPostIncludes", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="viewForum")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        Permission.objects.create(group=member_group, permission="discussion.reply")
+        self.author.user_groups.add(member_group)
+        self.reader.user_groups.add(member_group)
+        discussion = DiscussionService.create_discussion(
+            title="Post include discussion",
+            content="First post content",
+            user=self.author,
+        )
+        reply = create_runtime_post(
+            discussion_id=discussion.id,
+            content="Last post content",
+            user=self.reader,
+        )
+        discussion.refresh_from_db()
+
+        response = self.client.get(
+            f"/api/discussions/{discussion.id}",
+            {"include": "first_post,last_post"},
+            **self.auth_header(self.author),
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertEqual(payload["first_post"]["id"], discussion.first_post_id)
+        self.assertEqual(payload["first_post"]["number"], 1)
+        self.assertEqual(payload["last_post"]["id"], reply.id)
+        self.assertEqual(payload["last_post"]["number"], reply.number)
+
     def test_discussion_list_avoids_n_plus_one_for_registered_user_relationships(self):
         for index in range(3):
             DiscussionService.create_discussion(
@@ -671,6 +703,35 @@ class DiscussionApiTests(TestCase):
             if "user_groups" in query["sql"].lower()
         ]
         self.assertLessEqual(len(select_group_queries), 2)
+
+    def test_discussion_list_post_includes_do_not_query_posts_per_discussion(self):
+        member_group = Group.objects.create(name="DiscussionPostIncludeQueries", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="viewForum")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        self.author.user_groups.add(member_group)
+        for index in range(4):
+            DiscussionService.create_discussion(
+                title=f"帖子 include 讨论 {index}",
+                content="首帖内容",
+                user=self.author,
+            )
+
+        with CaptureQueriesContext(connection) as context:
+            response = self.client.get(
+                "/api/discussions/",
+                {"include": "first_post,last_post"},
+                **self.auth_header(self.author),
+            )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertTrue(all(item["first_post"]["number"] == 1 for item in payload["data"]))
+        post_select_queries = [
+            query["sql"]
+            for query in context.captured_queries
+            if ' from "posts"' in query["sql"].lower() or ' from `posts`' in query["sql"].lower()
+        ]
+        self.assertLessEqual(len(post_select_queries), 2)
 
     def test_discussion_list_capability_fields_do_not_add_group_query_per_discussion(self):
         member_group = Group.objects.create(name="DiscussionCapabilityFields", color="#4d698e")
