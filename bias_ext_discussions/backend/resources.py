@@ -37,6 +37,20 @@ def discussion_resource_field_definitions():
             resolver=resolve_discussion_can_reply,
             description="当前用户是否可以回复讨论。",
         ),
+        ResourceFieldDefinition(
+            resource="discussion",
+            field="can_rename",
+            module_id="discussions",
+            resolver=resolve_discussion_can_rename,
+            description="当前用户是否可以修改讨论标题。",
+        ),
+        ResourceFieldDefinition(
+            resource="discussion",
+            field="can_hide",
+            module_id="discussions",
+            resolver=resolve_discussion_can_hide,
+            description="当前用户是否可以隐藏或恢复讨论。",
+        ),
     )
 
 
@@ -92,4 +106,18 @@ def resolve_discussion_can_reply(discussion, context: dict) -> bool:
 
     user = context.get("user")
     return bool(user and DiscussionService.can_reply_discussion(discussion, user))
+
+
+def resolve_discussion_can_rename(discussion, context: dict) -> bool:
+    from bias_ext_discussions.backend.services import DiscussionService
+
+    user = context.get("user")
+    return bool(user and DiscussionService.can_rename_discussion(discussion, user))
+
+
+def resolve_discussion_can_hide(discussion, context: dict) -> bool:
+    from bias_ext_discussions.backend.services import DiscussionService
+
+    user = context.get("user")
+    return bool(user and DiscussionService.can_hide_discussion(discussion, user))
 

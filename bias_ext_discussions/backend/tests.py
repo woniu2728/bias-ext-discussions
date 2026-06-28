@@ -595,6 +595,47 @@ class DiscussionApiTests(TestCase):
         self.assertIn("can_reply", payload)
         self.assertNotIn("can_edit", payload)
 
+    def test_discussion_detail_exposes_rename_and_hide_capabilities(self):
+        member_group = Group.objects.create(name="DiscussionResourceAbilities", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="viewForum")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        Permission.objects.create(group=member_group, permission="discussion.reply")
+        self.author.user_groups.add(member_group)
+        discussion = DiscussionService.create_discussion(
+            title="Ability resource discussion",
+            content="Ability fields",
+            user=self.author,
+        )
+
+        response = self.client.get(
+            f"/api/discussions/{discussion.id}",
+            **self.auth_header(self.author),
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertTrue(payload["can_rename"])
+        self.assertTrue(payload["can_hide"])
+
+    def test_discussion_detail_field_selection_supports_hide_capability(self):
+        discussion = DiscussionService.create_discussion(
+            title="Hide field discussion",
+            content="Ability field selection",
+            user=self.author,
+        )
+
+        response = self.client.get(
+            f"/api/discussions/{discussion.id}",
+            {"fields[discussion]": "can_hide"},
+            **self.auth_header(self.author),
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertIn("can_hide", payload)
+        self.assertNotIn("can_reply", payload)
+        self.assertNotIn("can_rename", payload)
+
     def test_discussion_detail_supports_explicit_relationship_includes(self):
         discussion = DiscussionService.create_discussion(
             title="关系包含讨论",
@@ -624,6 +665,36 @@ class DiscussionApiTests(TestCase):
             response = self.client.get("/api/discussions/")
 
         self.assertEqual(response.status_code, 200, response.content)
+        select_group_queries = [
+            query["sql"]
+            for query in context.captured_queries
+            if "user_groups" in query["sql"].lower()
+        ]
+        self.assertLessEqual(len(select_group_queries), 2)
+
+    def test_discussion_list_capability_fields_do_not_add_group_query_per_discussion(self):
+        member_group = Group.objects.create(name="DiscussionCapabilityFields", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="viewForum")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        Permission.objects.create(group=member_group, permission="discussion.reply")
+        self.author.user_groups.add(member_group)
+        for index in range(4):
+            DiscussionService.create_discussion(
+                title=f"能力字段讨论 {index}",
+                content="能力字段内容",
+                user=self.author,
+            )
+
+        with CaptureQueriesContext(connection) as context:
+            response = self.client.get(
+                "/api/discussions/",
+                {"fields[discussion]": "can_rename,can_hide"},
+                **self.auth_header(self.author),
+            )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertTrue(all("can_rename" in item and "can_hide" in item for item in payload["data"]))
         select_group_queries = [
             query["sql"]
             for query in context.captured_queries
