@@ -17,6 +17,7 @@ from bias_ext_discussions.backend.schemas import (
     DiscussionReadStateSchema,
     DiscussionUpdateSchema,
 )
+from bias_ext_discussions.backend.resources import attach_discussion_resource_posts
 from bias_ext_discussions.backend.services import DiscussionService
 
 
@@ -26,18 +27,46 @@ def get_resource_registry():
 
 def serialize_discussion_payload(discussion, user=None, resource_options=None, default_includes=()):
     resource_options = resource_options or ResourceQueryOptions()
+    includes = merge_resource_includes(
+        ("user", "last_posted_user"),
+        default_includes,
+        resource_options.includes,
+    )
     payload = DiscussionOutSchema.from_orm(discussion).dict()
     payload.update(
         get_resource_registry().serialize(
             "discussion",
             discussion,
-            {"user": user},
+            {"user": user, "include": includes},
             only=resource_options.fields,
-            include=merge_resource_includes(
-                ("user", "last_posted_user"),
-                default_includes,
-                resource_options.includes,
-            ),
+            include=includes,
+        )
+    )
+    return payload
+
+
+def serialize_discussion_list_payload(discussion, user=None, resource_options=None, default_includes=()):
+    resource_options = resource_options or ResourceQueryOptions()
+    includes = merge_resource_includes(
+        ("user", "last_posted_user"),
+        default_includes,
+        resource_options.includes,
+    )
+    payload = DiscussionOutSchema.from_orm(discussion).dict()
+    payload.update(
+        get_resource_registry().serialize(
+            "discussion",
+            discussion,
+            {
+                "user": user,
+                "include": includes,
+                "require_prefetched_discussion_posts": True,
+                "plain_related_fields": {
+                    "post": ("user",),
+                },
+            },
+            only=resource_options.fields,
+            include=includes,
         )
     )
     return payload
@@ -45,16 +74,33 @@ def serialize_discussion_payload(discussion, user=None, resource_options=None, d
 
 def apply_discussion_resource_preloads(queryset, user=None, resource_options=None, default_includes=()):
     resource_options = resource_options or ResourceQueryOptions()
+    includes = merge_resource_includes(
+        ("user", "last_posted_user"),
+        default_includes,
+        resource_options.includes,
+    )
     return get_resource_registry().apply_preload_plan(
         queryset,
         "discussion",
-        {"user": user},
+        {"user": user, "include": includes},
         only=resource_options.fields,
-        include=merge_resource_includes(
-            ("user", "last_posted_user"),
-            default_includes,
-            resource_options.includes,
-        ),
+        include=includes,
+    )
+
+
+def apply_discussion_list_resource_preloads(queryset, user=None, resource_options=None, default_includes=()):
+    resource_options = resource_options or ResourceQueryOptions()
+    includes = merge_resource_includes(
+        ("user", "last_posted_user"),
+        default_includes,
+        resource_options.includes,
+    )
+    return get_resource_registry().apply_preload_plan(
+        queryset,
+        "discussion",
+        {"user": user, "include": includes, "defer_discussion_post_preload": True},
+        only=resource_options.fields,
+        include=includes,
     )
 
 
@@ -111,6 +157,7 @@ def discussion_resource_endpoints():
             methods=("GET",),
             path="discussions/",
             absolute_path=True,
+            default_include=("most_relevant_post", "most_relevant_post.user"),
         )
     )
     add(
@@ -287,12 +334,24 @@ def dispatch_discussion_index(context):
         limit=limit,
         user=user,
         query_params=_discussion_query_params(context),
-        preload=lambda queryset: apply_discussion_resource_preloads(
+        preload=lambda queryset: apply_discussion_list_resource_preloads(
             queryset,
             user=user,
             resource_options=resource_options,
             default_includes=default_includes,
         ),
+    )
+    attach_discussion_resource_posts(
+        discussions,
+        context={
+            "user": user,
+            "include": merge_resource_includes(
+                ("user", "last_posted_user"),
+                default_includes,
+                resource_options.includes,
+            ),
+            "require_prefetched_discussion_posts": True,
+        },
     )
     active_filter = DiscussionService.normalize_discussion_list_filter(filter_code)
     active_sort = DiscussionService.normalize_discussion_sort(sort)
@@ -311,7 +370,7 @@ def dispatch_discussion_index(context):
             for item in DiscussionService.get_discussion_sort_catalog()
         ],
         "data": [
-            serialize_discussion_payload(
+            serialize_discussion_list_payload(
                 discussion,
                 user=user,
                 resource_options=resource_options,

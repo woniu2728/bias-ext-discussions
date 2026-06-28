@@ -793,6 +793,98 @@ class DiscussionApiTests(TestCase):
         ]
         self.assertLessEqual(len(select_group_queries), 3)
 
+    def test_discussion_list_defaults_to_most_relevant_post_user_include(self):
+        member_group = Group.objects.create(name="DiscussionMostRelevantDefault", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="viewForum")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        Permission.objects.create(group=member_group, permission="discussion.reply")
+        self.author.user_groups.add(member_group)
+        self.reader.user_groups.add(member_group)
+        discussion = DiscussionService.create_discussion(
+            title="Search default include discussion",
+            content="Opening content",
+            user=self.author,
+        )
+        reply = create_runtime_post(
+            discussion_id=discussion.id,
+            content="needle-reply-content",
+            user=self.reader,
+        )
+        discussion.refresh_from_db()
+
+        response = self.client.get("/api/discussions/", **self.auth_header(self.author))
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()["data"][0]
+        self.assertEqual(payload["id"], discussion.id)
+        self.assertEqual(payload["most_relevant_post"]["id"], discussion.first_post_id)
+        self.assertEqual(payload["most_relevant_post"]["user"]["id"], self.author.id)
+
+    def test_discussion_list_most_relevant_post_falls_back_to_first_post_for_title_match(self):
+        member_group = Group.objects.create(name="DiscussionMostRelevantTitle", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="viewForum")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        self.author.user_groups.add(member_group)
+        discussion = DiscussionService.create_discussion(
+            title="Unique title needle",
+            content="Opening content",
+            user=self.author,
+        )
+
+        response = self.client.get(
+            "/api/discussions/",
+            {"q": "Unique title needle"},
+            **self.auth_header(self.author),
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()["data"][0]
+        self.assertEqual(payload["id"], discussion.id)
+        self.assertEqual(payload["most_relevant_post"]["id"], discussion.first_post_id)
+
+    def test_discussion_list_default_most_relevant_include_has_bounded_post_queries(self):
+        member_group = Group.objects.create(name="DiscussionMostRelevantQueries", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="viewForum")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        Permission.objects.create(group=member_group, permission="discussion.reply")
+        self.author.user_groups.add(member_group)
+        self.reader.user_groups.add(member_group)
+        for index in range(4):
+            discussion = DiscussionService.create_discussion(
+                title=f"Search query discussion {index}",
+                content="Opening content",
+                user=self.author,
+            )
+            create_runtime_post(
+                discussion_id=discussion.id,
+                content=f"common-needle reply {index}",
+                user=self.reader,
+            )
+
+        with CaptureQueriesContext(connection) as context:
+            response = self.client.get(
+                "/api/discussions/",
+                {"q": "common-needle"},
+                **self.auth_header(self.author),
+            )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertEqual(len(payload["data"]), 4)
+        self.assertTrue(all(item["most_relevant_post"]["user"]["id"] == self.reader.id for item in payload["data"]))
+        post_select_queries = [
+            query["sql"]
+            for query in context.captured_queries
+            if ' from "posts"' in query["sql"].lower() or ' from `posts`' in query["sql"].lower()
+        ]
+        select_group_queries = [
+            query["sql"]
+            for query in context.captured_queries
+            if "user_groups" in query["sql"].lower()
+        ]
+        self.assertLessEqual(len(post_select_queries), 3)
+        self.assertLessEqual(len(select_group_queries), 3)
+
     def test_discussion_list_capability_fields_do_not_add_group_query_per_discussion(self):
         member_group = Group.objects.create(name="DiscussionCapabilityFields", color="#4d698e")
         Permission.objects.create(group=member_group, permission="viewForum")
