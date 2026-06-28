@@ -214,15 +214,6 @@ def create_discussion(
         discussion.participant_count = 1
         discussion.save()
 
-        _apply_discussion_create_extensions(
-            discussion_lifecycle,
-            discussion=discussion,
-            states=extension_states,
-            context={
-                "actor_user_id": user.id,
-                "payload": extension_payload,
-            },
-        )
         _apply_discussion_resource_relationships(
             discussion,
             payload=extension_payload,
@@ -233,6 +224,18 @@ def create_discussion(
         _refresh_discussion_private_state(discussion, first_post=first_post)
         discussion.save(update_fields=["is_private"])
         first_post.save(update_fields=["is_private"])
+
+        _apply_discussion_create_extensions(
+            discussion_lifecycle,
+            discussion=discussion,
+            states=extension_states,
+            context={
+                "actor_user_id": user.id,
+                "payload": extension_payload,
+                "is_approved": not requires_approval,
+                "is_counted": (not requires_approval and not discussion.is_private),
+            },
+        )
 
         if not requires_approval:
             _apply_post_created_extensions(
