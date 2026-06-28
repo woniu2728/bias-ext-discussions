@@ -14,6 +14,7 @@ from bias_core.extensions.runtime import (
     apply_runtime_discussion_search,
     evaluate_runtime_model_policy,
     get_runtime_resource_registry,
+    get_runtime_search_service,
 )
 from bias_core.extensions.platform import get_forum_registry
 from bias_ext_discussions.backend import discussion_tracking, service_lifecycle
@@ -216,12 +217,19 @@ class DiscussionService:
             queryset = queryset.filter(user__username=author)
 
         normalized_query_params = dict(query_params or {})
+        active_filters = DiscussionService._discussion_list_active_filters(
+            q=q,
+            author=author,
+            list_filter=list_filter,
+            query_params=normalized_query_params,
+        )
         query_context = {
             "user": user,
             "query": q,
             "author": author,
             "filter": list_filter,
             "params": normalized_query_params,
+            "active_filters": active_filters,
         }
         for query_definition in _get_forum_registry().get_discussion_list_queries():
             queryset = query_definition.applier(
@@ -241,6 +249,7 @@ class DiscussionService:
                 "query": q,
                 "author": author,
                 "params": normalized_query_params,
+                "active_filters": active_filters,
             },
         )
 
@@ -255,6 +264,7 @@ class DiscussionService:
                 "author": author,
                 "filter": filter_definition.code,
                 "params": normalized_query_params,
+                "active_filters": active_filters,
             },
         )
         queryset = get_runtime_resource_registry().apply_named_sort(
@@ -268,6 +278,7 @@ class DiscussionService:
                 "author": author,
                 "filter": filter_definition.code,
                 "params": normalized_query_params,
+                "active_filters": active_filters,
             },
         )
 
@@ -280,6 +291,40 @@ class DiscussionService:
         DiscussionService._attach_user_read_state(discussions, user)
 
         return discussions, total
+
+    @staticmethod
+    def _discussion_list_active_filters(
+        *,
+        q: Optional[str] = None,
+        author: Optional[str] = None,
+        list_filter: str = "all",
+        query_params: Optional[dict] = None,
+    ) -> tuple[str, ...]:
+        active: list[str] = []
+        params = query_params or {}
+
+        if _has_value(author):
+            active.append("author")
+
+        if str(list_filter or "all").strip().lower() != "all":
+            active.append("filter")
+
+        active_query_keys = {
+            definition.key
+            for definition in _get_forum_registry().get_discussion_list_queries()
+        }
+        for key, value in params.items():
+            normalized_key = str(key or "").strip()
+            if normalized_key in {"q", "author", "filter", "sort", "page", "limit"}:
+                continue
+            if normalized_key in active_query_keys and _has_value(value):
+                active.append(normalized_key)
+
+        for definition, _parsed_value in _discussion_search_filter_tokens(q):
+            code = str(getattr(definition, "code", "") or "").strip()
+            active.append(code or "search")
+
+        return tuple(dict.fromkeys(item for item in active if item))
 
     @staticmethod
     def get_discussion_by_id(
@@ -562,3 +607,23 @@ class DiscussionService:
         """
         from bias_core.extensions.platform import MarkdownService
         return MarkdownService.render(content, sanitize=True)
+
+
+def _discussion_search_filter_tokens(query: str | None) -> tuple[tuple[Any, Any], ...]:
+    if not _has_value(query):
+        return ()
+    search_service = get_runtime_search_service()
+    extractor = getattr(search_service, "extract_filter_tokens", None)
+    if not callable(extractor):
+        return ()
+    try:
+        _text_query, filters = extractor(query, targets=("discussion",))
+    except Exception:
+        return ()
+    return tuple(filters.get("discussion", ()) or ())
+
+
+def _has_value(value) -> bool:
+    if isinstance(value, (list, tuple)):
+        return any(_has_value(item) for item in value)
+    return bool(str(value or "").strip())
