@@ -540,6 +540,16 @@ class DiscussionService:
             allowed = True
         elif discussion.user_id == user.id:
             allowed = has_runtime_forum_permission(user, "discussion.editOwn")
+        model_policy = evaluate_runtime_model_policy(
+            "edit",
+            user=user,
+            model=discussion,
+            default=allowed,
+            discussion=discussion,
+        )
+        if model_policy is False:
+            return False
+        allowed = bool(model_policy)
         return bool(evaluate_extension_policy(
             "discussion.edit",
             default=allowed,
@@ -559,6 +569,16 @@ class DiscussionService:
             allowed = True
         elif discussion.user_id == user.id:
             allowed = has_runtime_forum_permission(user, "discussion.deleteOwn")
+        model_policy = evaluate_runtime_model_policy(
+            "delete",
+            user=user,
+            model=discussion,
+            default=allowed,
+            discussion=discussion,
+        )
+        if model_policy is False:
+            return False
+        allowed = bool(model_policy)
         return bool(evaluate_extension_policy(
             "discussion.delete",
             default=allowed,
