@@ -1408,8 +1408,8 @@ class DiscussionApiTests(TestCase):
         renamed_post = Post.objects.get(discussion=discussion, number=2)
         self.assertEqual(renamed_post.type, "discussionRenamed")
         self.assertEqual(renamed_post.content, "from: Original title\nto: Updated title")
-        self.assertEqual(discussion.last_post_id, renamed_post.id)
-        self.assertEqual(discussion.last_post_number, 2)
+        self.assertEqual(discussion.last_post_id, discussion.first_post_id)
+        self.assertEqual(discussion.last_post_number, 1)
         self.assertEqual(discussion.comment_count, 1)
 
         posts_response = self.client.get(f"/api/discussions/{discussion.id}/posts")
@@ -1450,7 +1450,8 @@ class DiscussionApiTests(TestCase):
         locked_post = Post.objects.get(discussion=discussion, number=2)
         self.assertEqual(locked_post.type, "discussionLocked")
         self.assertEqual(locked_post.content, "locked")
-        self.assertEqual(discussion.last_post_id, locked_post.id)
+        self.assertEqual(discussion.last_post_id, discussion.first_post_id)
+        self.assertEqual(discussion.last_post_number, 1)
         self.assertEqual(discussion.comment_count, 1)
 
         posts_response = self.client.get(f"/api/discussions/{discussion.id}/posts")
@@ -1576,7 +1577,8 @@ class DiscussionApiTests(TestCase):
         sticky_post = Post.objects.get(discussion=discussion, number=2)
         self.assertEqual(sticky_post.type, "discussionSticky")
         self.assertEqual(sticky_post.content, "sticky")
-        self.assertEqual(discussion.last_post_id, sticky_post.id)
+        self.assertEqual(discussion.last_post_id, discussion.first_post_id)
+        self.assertEqual(discussion.last_post_number, 1)
         self.assertEqual(discussion.comment_count, 1)
 
         posts_response = self.client.get(f"/api/discussions/{discussion.id}/posts")

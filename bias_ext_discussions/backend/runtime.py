@@ -325,7 +325,7 @@ def create_timeline_from_builder(
     builder: str,
     *,
     extra: dict | None = None,
-    update_discussion_last_post: bool = True,
+    update_discussion_last_post: bool | None = None,
 ):
     from bias_ext_discussions.backend import timeline
 

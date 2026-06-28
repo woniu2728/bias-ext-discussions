@@ -27,7 +27,7 @@ def make_timeline_context(event, **extra):
     return SimpleNamespace(**payload)
 
 
-def create_timeline_from_builder(event, builder, *, update_discussion_last_post: bool = True) -> None:
+def create_timeline_from_builder(event, builder, *, update_discussion_last_post: bool | None = None) -> None:
     built = builder(event)
     if not built:
         return
@@ -48,7 +48,7 @@ def create_timeline_event_post(
     actor_user_id: int,
     post_type: str,
     content: str,
-    update_discussion_last_post: bool = True,
+    update_discussion_last_post: bool | None = None,
 ) -> object | None:
     try:
         actor = get_runtime_user_by_id(actor_user_id)
@@ -67,7 +67,13 @@ def create_timeline_event_post(
         approved_at=timezone.now(),
     )
 
-    if update_discussion_last_post:
+    should_update_discussion_last_post = (
+        _post_type_counts_toward_discussion(post_type)
+        if update_discussion_last_post is None
+        else bool(update_discussion_last_post)
+    )
+
+    if should_update_discussion_last_post:
         locked_discussion = event_post.discussion
         locked_discussion.last_post_id = event_post.id
         locked_discussion.last_post_number = event_post.number
@@ -80,6 +86,18 @@ def create_timeline_event_post(
             "last_posted_user",
         ])
     return event_post
+
+
+def _post_type_counts_toward_discussion(post_type: str) -> bool:
+    try:
+        from bias_core.extensions.platform import get_forum_registry
+
+        definition = get_forum_registry().get_post_type(str(post_type or "").strip())
+    except Exception:
+        definition = None
+    if definition is None:
+        return False
+    return bool(definition.counts_toward_discussion)
 
 
 def build_discussion_renamed_content(event) -> tuple[str, str] | None:
