@@ -452,6 +452,7 @@ def set_hidden_state(
             context={
                 "actor_user_id": user.id,
                 "is_hidden": is_hidden,
+                "was_counted": should_adjust_counts,
             },
         )
     return discussion
