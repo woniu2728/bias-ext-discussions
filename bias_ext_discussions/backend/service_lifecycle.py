@@ -675,7 +675,10 @@ def delete_discussion(
         _apply_discussion_delete_extensions(
             discussion_lifecycle,
             states=extension_states,
-            context={"actor_user_id": user.id},
+            context={
+                "actor_user_id": user.id,
+                "was_counted": counted_discussion,
+            },
         )
 
         if counted_discussion and discussion.user:
