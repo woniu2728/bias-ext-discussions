@@ -8,6 +8,7 @@ from django.db.models import Count
 from django.utils import timezone
 
 from bias_core.extensions.platform import sqlite_write_retry
+from bias_core.extensions.platform import get_extension_settings
 from bias_core.extensions.platform import get_forum_event_bus
 from bias_core.extensions.platform import evaluate_extension_policy
 from bias_core.extensions.runtime import (
@@ -572,7 +573,10 @@ class DiscussionService:
         if has_runtime_forum_permission(user, "discussion.rename"):
             allowed = True
         elif discussion.user_id == user.id:
-            allowed = has_runtime_forum_permission(user, "discussion.reply")
+            allowed = (
+                has_runtime_forum_permission(user, "discussion.reply")
+                and DiscussionService._author_can_rename_discussion(discussion)
+            )
         model_policy = evaluate_runtime_model_policy(
             "rename",
             user=user,
@@ -601,7 +605,10 @@ class DiscussionService:
         if has_runtime_forum_permission(user, "discussion.hide"):
             allowed = True
         elif discussion.user_id == user.id:
-            allowed = has_runtime_forum_permission(user, "discussion.deleteOwn")
+            allowed = (
+                has_runtime_forum_permission(user, "discussion.reply")
+                and DiscussionService._author_can_hide_discussion(discussion, user)
+            )
         model_policy = evaluate_runtime_model_policy(
             "hide",
             user=user,
@@ -618,6 +625,33 @@ class DiscussionService:
             user=user,
             discussion=discussion,
         ))
+
+    @staticmethod
+    def _author_can_rename_discussion(discussion: Discussion) -> bool:
+        allow_renaming = str(
+            get_extension_settings("discussions").get("allow_renaming", "reply") or "reply"
+        ).strip()
+        if allow_renaming == "-1":
+            return True
+        if allow_renaming == "reply":
+            return getattr(discussion, "participant_count", 0) <= 1
+        try:
+            allowed_minutes = int(allow_renaming)
+        except (TypeError, ValueError):
+            return False
+        created_at = getattr(discussion, "created_at", None)
+        if created_at is None:
+            return False
+        return timezone.now() - created_at < timezone.timedelta(minutes=allowed_minutes)
+
+    @staticmethod
+    def _author_can_hide_discussion(discussion: Discussion, user: User) -> bool:
+        if getattr(discussion, "participant_count", 0) > 1:
+            return False
+        hidden_user_id = getattr(discussion, "hidden_user_id", None)
+        if getattr(discussion, "hidden_at", None) is not None and hidden_user_id != getattr(user, "id", None):
+            return False
+        return True
 
     @staticmethod
     def can_delete_discussion(discussion: Discussion, user: User) -> bool:

@@ -4,7 +4,7 @@ from django.core.exceptions import PermissionDenied
 
 from bias_core.extensions.platform import api_error
 from bias_core.extensions.platform import log_admin_action
-from bias_core.extensions.runtime import get_runtime_resource_registry
+from bias_core.extensions.runtime import get_runtime_resource_registry, has_runtime_forum_permission
 from bias_core.extensions.runtime import get_runtime_first_post, resolve_runtime_discussion_post_content_html
 from bias_core.extensions.platform import ResourceQueryOptions, merge_resource_includes, parse_resource_query_options
 from bias_core.extensions import ResourceEndpointDefinition
@@ -511,13 +511,14 @@ def dispatch_discussion_toggle_hide(context):
         next_hidden = not discussion.is_hidden
         DiscussionService.set_hidden_state(discussion, user, next_hidden)
         discussion.refresh_from_db()
-        log_admin_action(
-            request,
-            "admin.discussion.hide" if discussion.is_hidden else "admin.discussion.restore",
-            target_type="discussion",
-            target_id=discussion.id,
-            data={"title": discussion.title, "is_hidden": discussion.is_hidden},
-        )
+        if has_runtime_forum_permission(user, "discussion.hide"):
+            log_admin_action(
+                request,
+                "admin.discussion.hide" if discussion.is_hidden else "admin.discussion.restore",
+                target_type="discussion",
+                target_id=discussion.id,
+                data={"title": discussion.title, "is_hidden": discussion.is_hidden},
+            )
         return {"message": "操作成功", "is_hidden": discussion.is_hidden}
     except Discussion.DoesNotExist:
         return api_error("讨论不存在", status=404)

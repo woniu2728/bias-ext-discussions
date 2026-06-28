@@ -9,6 +9,7 @@ from bias_core.extensions import (
     RealtimeExtender,
     SearchIndexExtender,
     ServiceProviderExtender,
+    SettingsExtender,
 )
 
 from bias_ext_discussions.backend.admin_surface import permission_definitions
@@ -46,6 +47,7 @@ from bias_ext_discussions.backend.search_contracts import search_index_definitio
 from bias_ext_discussions.backend.search_targets import (
     discussion_search_target_provider,
 )
+from bias_ext_discussions.backend.settings import setting_field_definitions
 from bias_ext_discussions.backend.visibility import scope_discussion_view
 
 
@@ -59,6 +61,10 @@ def admin_extenders():
             permissions=permission_definitions(),
             permissions_pages=("/admin/extensions/discussions/permissions",),
             generated_permissions_page=True,
+        ),
+        SettingsExtender(
+            fields=setting_field_definitions(),
+            expose_to_forum=("allow_renaming",),
         ),
     )
 

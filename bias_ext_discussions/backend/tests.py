@@ -19,10 +19,12 @@ from bias_core.extensions.testing import (
     AuditLog,
     ExtensionApplication,
     ExtensionRuntimeTestMixin,
+    Setting,
     ResourceRegistry,
     capture_runtime_events,
     get_forum_registry,
 )
+from bias_core.extension_settings_service import clear_extension_settings_cache
 from bias_ext_discussions.backend.visibility import (
     build_discussion_visibility_q,
     scope_discussion_view,
@@ -121,6 +123,14 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
         ):
             self.assertTrue(callable(service[key]), key)
         self.assertTrue(callable(timeline_service["create_from_builder"]))
+
+    def test_discussions_extension_registers_author_renaming_setting(self):
+        application = self.bootstrap_extensions("discussions")
+        runtime_view = application.get_runtime_extension("discussions")
+        setting_keys = {field.key for field in runtime_view.settings_schema}
+
+        self.assertIn("allow_renaming", setting_keys)
+        self.assertIn("allow_renaming", runtime_view.forum_settings_keys)
 
     def test_realtime_post_payload_uses_realtime_contract(self):
         from bias_ext_discussions.backend import realtime
@@ -266,6 +276,8 @@ def discussion_resource_payload(*, title=None, content=None):
 class DiscussionApiTests(TestCase):
     def setUp(self):
         self.client = Client()
+        Setting.objects.filter(key="extensions.discussions.allow_renaming").delete()
+        clear_extension_settings_cache("discussions")
         self.author = User.objects.create_user(
             username="author",
             email="author@example.com",
@@ -1404,6 +1416,91 @@ class DiscussionApiTests(TestCase):
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"], "没有权限修改讨论标题")
 
+    def test_author_can_rename_own_discussion_before_replies_by_default(self):
+        member_group = Group.objects.create(name="DiscussionAuthorRenameWindow", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        Permission.objects.create(group=member_group, permission="discussion.reply")
+        self.author.user_groups.add(member_group)
+
+        discussion = DiscussionService.create_discussion(
+            title="Original title",
+            content="Original content",
+            user=self.author,
+        )
+
+        response = self.client.patch(
+            f"/api/discussions/{discussion.id}",
+            data=json.dumps({"title": "Updated before reply"}),
+            content_type="application/json",
+            **self.auth_header(self.author),
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["title"], "Updated before reply")
+
+    def test_author_cannot_rename_own_discussion_after_replies_by_default(self):
+        member_group = Group.objects.create(name="DiscussionAuthorRenameLocked", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        Permission.objects.create(group=member_group, permission="discussion.reply")
+        self.author.user_groups.add(member_group)
+        self.reader.user_groups.add(member_group)
+
+        discussion = DiscussionService.create_discussion(
+            title="Original title",
+            content="Original content",
+            user=self.author,
+        )
+        create_runtime_post(
+            discussion_id=discussion.id,
+            content="Reply locks author rename",
+            user=self.reader,
+        )
+        discussion.refresh_from_db()
+        self.assertGreater(discussion.participant_count, 1)
+
+        response = self.client.patch(
+            f"/api/discussions/{discussion.id}",
+            data=json.dumps({"title": "Updated after reply"}),
+            content_type="application/json",
+            **self.auth_header(self.author),
+        )
+
+        self.assertEqual(response.status_code, 403, response.content)
+        self.assertEqual(response.json()["error"], "没有权限修改讨论标题")
+
+    def test_author_can_rename_own_discussion_after_replies_when_setting_allows(self):
+        Setting.objects.update_or_create(
+            key="extensions.discussions.allow_renaming",
+            defaults={"value": "-1"},
+        )
+        clear_extension_settings_cache("discussions")
+        member_group = Group.objects.create(name="DiscussionAuthorRenameAlways", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        Permission.objects.create(group=member_group, permission="discussion.reply")
+        self.author.user_groups.add(member_group)
+        self.reader.user_groups.add(member_group)
+
+        discussion = DiscussionService.create_discussion(
+            title="Original title",
+            content="Original content",
+            user=self.author,
+        )
+        create_runtime_post(
+            discussion_id=discussion.id,
+            content="Reply does not lock author rename",
+            user=self.reader,
+        )
+
+        response = self.client.patch(
+            f"/api/discussions/{discussion.id}",
+            data=json.dumps({"title": "Updated despite reply"}),
+            content_type="application/json",
+            **self.auth_header(self.author),
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["title"], "Updated despite reply")
+
     def test_updating_discussion_title_creates_discussion_renamed_event_post(self):
         member_group = Group.objects.create(name="DiscussionRenameAuthor", color="#4d698e")
         Permission.objects.create(group=member_group, permission="startDiscussion")
@@ -1658,6 +1755,53 @@ class DiscussionApiTests(TestCase):
                 "is_hidden": True,
             },
         )
+
+    def test_author_can_hide_own_discussion_before_replies(self):
+        member_group = Group.objects.create(name="DiscussionAuthorHideOwn", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        Permission.objects.create(group=member_group, permission="discussion.reply")
+        self.author.user_groups.add(member_group)
+        discussion = DiscussionService.create_discussion(
+            title="Author hide own",
+            content="No replies yet",
+            user=self.author,
+        )
+
+        response = self.client.post(
+            f"/api/discussions/{discussion.id}/hide",
+            **self.auth_header(self.author),
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        discussion.refresh_from_db()
+        self.assertTrue(discussion.is_hidden)
+        self.assertEqual(discussion.hidden_user_id, self.author.id)
+        self.assertFalse(AuditLog.objects.filter(action="admin.discussion.hide").exists())
+
+    def test_author_cannot_hide_own_discussion_after_replies(self):
+        member_group = Group.objects.create(name="DiscussionAuthorHideLocked", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        Permission.objects.create(group=member_group, permission="discussion.reply")
+        self.author.user_groups.add(member_group)
+        self.reader.user_groups.add(member_group)
+        discussion = DiscussionService.create_discussion(
+            title="Author hide locked",
+            content="Will receive reply",
+            user=self.author,
+        )
+        create_runtime_post(
+            discussion_id=discussion.id,
+            content="Reply locks author hide",
+            user=self.reader,
+        )
+
+        response = self.client.post(
+            f"/api/discussions/{discussion.id}/hide",
+            **self.auth_header(self.author),
+        )
+
+        self.assertEqual(response.status_code, 403, response.content)
+        self.assertEqual(response.json()["error"], "没有权限隐藏/显示讨论")
 
     def test_owner_with_delete_own_permission_can_delete_discussion(self):
         member_group = Group.objects.create(name="DiscussionAuthorDeleteOwn", color="#4d698e")
