@@ -228,6 +228,7 @@ def _refresh_approved_stats(discussion, *, discussion_counted_post_types):
         discussion_counted_post_types=discussion_counted_post_types,
     )
     discussion.comment_count = int(stats.get("comment_count") or 0)
+    discussion.participant_count = int(stats.get("participant_count") or 0)
     discussion.last_post_id = stats.get("last_post_id")
     discussion.last_post_number = stats.get("last_post_number")
     discussion.last_posted_at = stats.get("last_posted_at")
@@ -235,6 +236,7 @@ def _refresh_approved_stats(discussion, *, discussion_counted_post_types):
 
     discussion.save(update_fields=[
         "comment_count",
+        "participant_count",
         "last_post_id",
         "last_post_number",
         "last_posted_at",
