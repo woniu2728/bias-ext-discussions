@@ -685,6 +685,37 @@ class DiscussionApiTests(TestCase):
         self.assertEqual(payload["last_post"]["id"], reply.id)
         self.assertEqual(payload["last_post"]["number"], reply.number)
 
+    def test_discussion_detail_includes_nested_post_users(self):
+        member_group = Group.objects.create(name="DiscussionNestedPostIncludes", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="viewForum")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        Permission.objects.create(group=member_group, permission="discussion.reply")
+        self.author.user_groups.add(member_group)
+        self.reader.user_groups.add(member_group)
+        discussion = DiscussionService.create_discussion(
+            title="Nested post include discussion",
+            content="First post content",
+            user=self.author,
+        )
+        create_runtime_post(
+            discussion_id=discussion.id,
+            content="Last post content",
+            user=self.reader,
+        )
+        discussion.refresh_from_db()
+
+        response = self.client.get(
+            f"/api/discussions/{discussion.id}",
+            {"include": "first_post.user,last_post.user"},
+            **self.auth_header(self.author),
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertEqual(payload["first_post"]["user"]["id"], self.author.id)
+        self.assertEqual(payload["last_post"]["user"]["id"], self.reader.id)
+        self.assertEqual(payload["first_post"]["user"]["primary_group"]["name"], member_group.name)
+
     def test_discussion_list_avoids_n_plus_one_for_registered_user_relationships(self):
         for index in range(3):
             DiscussionService.create_discussion(
@@ -732,6 +763,35 @@ class DiscussionApiTests(TestCase):
             if ' from "posts"' in query["sql"].lower() or ' from `posts`' in query["sql"].lower()
         ]
         self.assertLessEqual(len(post_select_queries), 2)
+
+    def test_discussion_list_nested_post_user_includes_do_not_query_groups_per_discussion(self):
+        member_group = Group.objects.create(name="DiscussionNestedPostIncludeQueries", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="viewForum")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        self.author.user_groups.add(member_group)
+        for index in range(4):
+            DiscussionService.create_discussion(
+                title=f"嵌套帖子 include 讨论 {index}",
+                content="首帖内容",
+                user=self.author,
+            )
+
+        with CaptureQueriesContext(connection) as context:
+            response = self.client.get(
+                "/api/discussions/",
+                {"include": "first_post.user,last_post.user"},
+                **self.auth_header(self.author),
+            )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertTrue(all(item["first_post"]["user"]["id"] == self.author.id for item in payload["data"]))
+        select_group_queries = [
+            query["sql"]
+            for query in context.captured_queries
+            if "user_groups" in query["sql"].lower()
+        ]
+        self.assertLessEqual(len(select_group_queries), 3)
 
     def test_discussion_list_capability_fields_do_not_add_group_query_per_discussion(self):
         member_group = Group.objects.create(name="DiscussionCapabilityFields", color="#4d698e")

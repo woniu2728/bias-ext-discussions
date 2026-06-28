@@ -151,7 +151,18 @@ def discussion_post_preload_resolver(context: dict):
     Post = _runtime_post_model()
     if Post is None:
         return (), ()
-    post_queryset = Post.objects.select_related("user", "edited_user", "discussion")
+    nested_includes = _discussion_post_nested_includes(context)
+    select_related = ["discussion"]
+    prefetch_related = []
+    if "user" in nested_includes:
+        select_related.append("user")
+        prefetch_related.append("user__user_groups")
+    if "edited_user" in nested_includes:
+        select_related.append("edited_user")
+        prefetch_related.append("edited_user__user_groups")
+    post_queryset = Post.objects.select_related(*select_related)
+    if prefetch_related:
+        post_queryset = post_queryset.prefetch_related(*prefetch_related)
     return (), (
         Prefetch("posts", queryset=post_queryset, to_attr="resource_posts"),
     )
@@ -184,4 +195,19 @@ def _runtime_post_model():
     from bias_core.extensions.runtime import get_runtime_post_model_or_none
 
     return get_runtime_post_model_or_none()
+
+
+def _discussion_post_nested_includes(context: dict) -> set[str]:
+    includes = tuple(context.get("include") or ())
+    output: set[str] = set()
+    for item in includes:
+        normalized = str(item or "").strip()
+        if not normalized:
+            continue
+        for prefix in ("first_post.", "last_post."):
+            if normalized.startswith(prefix):
+                nested = normalized.removeprefix(prefix).split(".", 1)[0].strip()
+                if nested:
+                    output.add(nested)
+    return output
 
