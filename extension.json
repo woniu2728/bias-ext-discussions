@@ -2,7 +2,7 @@
   "id": "discussions",
   "name": "Discussions",
   "version": "0.1.0",
-  "description": "提供主题讨论、讨论列表过滤排序、精华帖标记和讨论生命周期管理。",
+  "description": "提供主题讨论 API、前端路由、讨论列表过滤排序和讨论生命周期界面；基础讨论数据由 content 提供。",
   "icon": "fas fa-comments",
   "category": "feature",
   "authors": [
@@ -34,6 +34,6 @@
     "auto_enable": true
   },
   "security": {
-    "capabilities_notice": "Discussion domain extension; owns discussion records and controls discussion visibility, sorting, lifecycle, and moderation surfaces."
+    "capabilities_notice": "Discussion UI/API wrapper; delegates discussion records to the content foundation and contributes visibility, sorting, lifecycle, and moderation surfaces."
   }
 }
