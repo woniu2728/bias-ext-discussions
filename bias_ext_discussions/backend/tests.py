@@ -66,7 +66,9 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
         application = self.bootstrap_extensions("discussions")
         service = application.get_service("discussions.service")
         timeline_service = application.get_service("discussions.timeline")
+        runtime_view = application.get_runtime_extension("discussions")
 
+        self.assertEqual(runtime_view.capabilities, ("discussion-api", "discussion-ui", "discussion_lifecycle"))
         self.assertIn("discussions.service", application.get_service_provider_keys(extension_id="discussions"))
         self.assertIn("discussions.timeline", application.get_service_provider_keys(extension_id="discussions"))
         self.assertIn("search.target.discussion", application.get_service_provider_keys(extension_id="discussions"))

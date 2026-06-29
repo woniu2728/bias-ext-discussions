@@ -14,7 +14,8 @@
     "content"
   ],
   "provides": [
-    "discussions",
+    "discussion-api",
+    "discussion-ui",
     "discussion_lifecycle"
   ],
   "django": {
