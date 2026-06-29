@@ -6,9 +6,14 @@ from typing import Callable
 
 from django.utils import timezone
 
-from bias_core.extensions.runtime import get_runtime_user_by_id
 from bias_ext_discussions.backend import content_posts
 from bias_ext_discussions.backend.models import Discussion
+
+
+def get_runtime_user_by_id(*args, **kwargs):
+    from bias_core.extensions.runtime import get_runtime_user_by_id as runtime_get_user_by_id
+
+    return runtime_get_user_by_id(*args, **kwargs)
 
 
 TimelineContentBuilder = Callable[[object], tuple[str, str] | None]

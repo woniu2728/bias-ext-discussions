@@ -11,22 +11,38 @@ from bias_core.extensions.platform import sqlite_write_retry
 from bias_core.extensions.platform import get_extension_settings
 from bias_core.extensions.platform import get_forum_event_bus
 from bias_core.extensions.platform import evaluate_extension_policy
-from bias_core.extensions.runtime import (
-    evaluate_runtime_model_policy,
-    get_extension_host_service,
-    get_runtime_resource_registry,
-)
 from bias_core.extensions.platform import get_forum_registry
 from bias_ext_discussions.backend import discussion_tracking, service_lifecycle
 from bias_ext_discussions.backend.models import Discussion, DiscussionUser
 from bias_core.extensions.platform import PaginationService
-from bias_core.extensions.runtime import (
-    has_runtime_forum_permission,
-)
 
 
 # Keep discussions independent from the users extension at runtime.
 User = Any
+
+
+def evaluate_runtime_model_policy(*args, **kwargs):
+    from bias_core.extensions.runtime import evaluate_runtime_model_policy as runtime_evaluate_model_policy
+
+    return runtime_evaluate_model_policy(*args, **kwargs)
+
+
+def get_extension_host_service(*args, **kwargs):
+    from bias_core.extensions.runtime import get_extension_host_service as runtime_get_extension_host_service
+
+    return runtime_get_extension_host_service(*args, **kwargs)
+
+
+def get_runtime_resource_registry(*args, **kwargs):
+    from bias_core.extensions.runtime import get_runtime_resource_registry as runtime_get_resource_registry
+
+    return runtime_get_resource_registry(*args, **kwargs)
+
+
+def has_runtime_forum_permission(*args, **kwargs):
+    from bias_core.extensions.runtime import has_runtime_forum_permission as runtime_has_forum_permission
+
+    return runtime_has_forum_permission(*args, **kwargs)
 
 
 def _get_forum_registry():

@@ -34,17 +34,40 @@ from bias_ext_discussions.backend.handlers import discussion_resource_endpoints
 from bias_ext_discussions.backend.models import Discussion, DiscussionUser
 from bias_ext_discussions.backend.schemas import DiscussionCreateSchema, DiscussionUpdateSchema
 from bias_ext_discussions.backend.services import DiscussionService
-from bias_core.extensions.runtime import (
-    create_runtime_post,
-    follow_runtime_discussion,
-    get_runtime_post_model,
-    mark_runtime_discussion_read,
-)
-from bias_core.extensions.runtime import (
-    get_runtime_group_model,
-    get_runtime_permission_model,
-    get_runtime_user_model,
-)
+
+
+def _runtime_facade(name: str):
+    from importlib import import_module
+
+    return getattr(import_module("bias_core.extensions.runtime"), name)
+
+
+def create_runtime_post(*args, **kwargs):
+    return _runtime_facade("create_runtime_post")(*args, **kwargs)
+
+
+def follow_runtime_discussion(*args, **kwargs):
+    return _runtime_facade("follow_runtime_discussion")(*args, **kwargs)
+
+
+def get_runtime_post_model(*args, **kwargs):
+    return _runtime_facade("get_runtime_post_model")(*args, **kwargs)
+
+
+def mark_runtime_discussion_read(*args, **kwargs):
+    return _runtime_facade("mark_runtime_discussion_read")(*args, **kwargs)
+
+
+def get_runtime_group_model(*args, **kwargs):
+    return _runtime_facade("get_runtime_group_model")(*args, **kwargs)
+
+
+def get_runtime_permission_model(*args, **kwargs):
+    return _runtime_facade("get_runtime_permission_model")(*args, **kwargs)
+
+
+def get_runtime_user_model(*args, **kwargs):
+    return _runtime_facade("get_runtime_user_model")(*args, **kwargs)
 
 
 class RuntimeModelProxy:

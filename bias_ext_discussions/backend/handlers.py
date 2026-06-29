@@ -4,13 +4,11 @@ from django.core.exceptions import PermissionDenied
 
 from bias_core.extensions.platform import api_error
 from bias_core.extensions.platform import log_admin_action
-from bias_core.extensions.runtime import get_runtime_resource_registry, has_runtime_forum_permission
 from bias_core.extensions.platform import ResourceQueryOptions, merge_resource_includes, parse_resource_query_options
 from bias_core.extensions import ResourceEndpointDefinition
 from bias_core.extensions.platform import PaginationService
 from bias_ext_discussions.backend import content_posts
 from bias_ext_discussions.backend.models import Discussion
-from bias_core.extensions.runtime import serialize_runtime_user
 from bias_ext_discussions.backend.schemas import (
     DiscussionCreateSchema,
     DiscussionOutSchema,
@@ -19,6 +17,24 @@ from bias_ext_discussions.backend.schemas import (
 )
 from bias_ext_discussions.backend.resources import attach_discussion_resource_posts
 from bias_ext_discussions.backend.services import DiscussionService
+
+
+def get_runtime_resource_registry(*args, **kwargs):
+    from bias_core.extensions.runtime import get_runtime_resource_registry as runtime_get_resource_registry
+
+    return runtime_get_resource_registry(*args, **kwargs)
+
+
+def has_runtime_forum_permission(*args, **kwargs):
+    from bias_core.extensions.runtime import has_runtime_forum_permission as runtime_has_forum_permission
+
+    return runtime_has_forum_permission(*args, **kwargs)
+
+
+def serialize_runtime_user(*args, **kwargs):
+    from bias_core.extensions.runtime import serialize_runtime_user as runtime_serialize_user
+
+    return runtime_serialize_user(*args, **kwargs)
 
 
 def get_resource_registry():

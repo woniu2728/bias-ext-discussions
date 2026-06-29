@@ -5,8 +5,25 @@ from collections import OrderedDict
 from django.contrib.auth.models import AnonymousUser
 
 from bias_core.extensions.platform import broadcast_realtime_discussion_event, iter_realtime_included_enrichers
-from bias_core.extensions.runtime import get_extension_host_service, runtime_service_method, serialize_runtime_user
 from bias_ext_discussions.backend import content_posts
+
+
+def get_extension_host_service(*args, **kwargs):
+    from bias_core.extensions.runtime import get_extension_host_service as runtime_get_extension_host_service
+
+    return runtime_get_extension_host_service(*args, **kwargs)
+
+
+def runtime_service_method(*args, **kwargs):
+    from bias_core.extensions.runtime import runtime_service_method as runtime_get_service_method
+
+    return runtime_get_service_method(*args, **kwargs)
+
+
+def serialize_runtime_user(*args, **kwargs):
+    from bias_core.extensions.runtime import serialize_runtime_user as runtime_serialize_user
+
+    return runtime_serialize_user(*args, **kwargs)
 
 
 def resolve_visible_discussion_ids(discussion_ids, user) -> list[int]:

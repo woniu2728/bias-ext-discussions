@@ -15,21 +15,62 @@ from bias_ext_discussions.backend.events import (
     DiscussionResubmittedEvent,
     DiscussionStickyChangedEvent,
 )
-from bias_core.extensions.runtime import (
-    get_runtime_discussion_lifecycle_service,
-    get_runtime_resource_registry,
-    refresh_runtime_model_private,
-)
 from bias_ext_discussions.backend import content_posts
 from bias_ext_discussions.backend.models import Discussion, DiscussionUser
-from bias_core.extensions.runtime import (
-    apply_runtime_user_comment_count_deltas,
-    ensure_runtime_forum_permission,
-    ensure_runtime_user_email_confirmed,
-    ensure_runtime_user_not_suspended,
-    increment_runtime_user_discussion_count,
-    requires_runtime_content_approval,
-)
+
+
+def get_runtime_discussion_lifecycle_service(*args, **kwargs):
+    from bias_core.extensions.runtime import get_runtime_discussion_lifecycle_service as runtime_get_discussion_lifecycle_service
+
+    return runtime_get_discussion_lifecycle_service(*args, **kwargs)
+
+
+def get_runtime_resource_registry(*args, **kwargs):
+    from bias_core.extensions.runtime import get_runtime_resource_registry as runtime_get_resource_registry
+
+    return runtime_get_resource_registry(*args, **kwargs)
+
+
+def refresh_runtime_model_private(*args, **kwargs):
+    from bias_core.extensions.runtime import refresh_runtime_model_private as runtime_refresh_model_private
+
+    return runtime_refresh_model_private(*args, **kwargs)
+
+
+def apply_runtime_user_comment_count_deltas(*args, **kwargs):
+    from bias_core.extensions.runtime import apply_runtime_user_comment_count_deltas as runtime_apply_user_comment_count_deltas
+
+    return runtime_apply_user_comment_count_deltas(*args, **kwargs)
+
+
+def ensure_runtime_forum_permission(*args, **kwargs):
+    from bias_core.extensions.runtime import ensure_runtime_forum_permission as runtime_ensure_forum_permission
+
+    return runtime_ensure_forum_permission(*args, **kwargs)
+
+
+def ensure_runtime_user_email_confirmed(*args, **kwargs):
+    from bias_core.extensions.runtime import ensure_runtime_user_email_confirmed as runtime_ensure_user_email_confirmed
+
+    return runtime_ensure_user_email_confirmed(*args, **kwargs)
+
+
+def ensure_runtime_user_not_suspended(*args, **kwargs):
+    from bias_core.extensions.runtime import ensure_runtime_user_not_suspended as runtime_ensure_user_not_suspended
+
+    return runtime_ensure_user_not_suspended(*args, **kwargs)
+
+
+def increment_runtime_user_discussion_count(*args, **kwargs):
+    from bias_core.extensions.runtime import increment_runtime_user_discussion_count as runtime_increment_user_discussion_count
+
+    return runtime_increment_user_discussion_count(*args, **kwargs)
+
+
+def requires_runtime_content_approval(*args, **kwargs):
+    from bias_core.extensions.runtime import requires_runtime_content_approval as runtime_requires_content_approval
+
+    return runtime_requires_content_approval(*args, **kwargs)
 
 
 def _prepare_discussion_create_extensions(discussion_lifecycle, *, user, payload: dict) -> dict:

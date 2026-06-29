@@ -1,10 +1,21 @@
 from __future__ import annotations
 
-from bias_core.extensions.runtime import (
-    get_extension_host_service,
-    get_runtime_post_lifecycle_service,
-    runtime_service_method,
-)
+def get_extension_host_service(*args, **kwargs):
+    from bias_core.extensions.runtime import get_extension_host_service as runtime_get_extension_host_service
+
+    return runtime_get_extension_host_service(*args, **kwargs)
+
+
+def get_runtime_post_lifecycle_service(*args, **kwargs):
+    from bias_core.extensions.runtime import get_runtime_post_lifecycle_service as runtime_get_post_lifecycle_service
+
+    return runtime_get_post_lifecycle_service(*args, **kwargs)
+
+
+def runtime_service_method(*args, **kwargs):
+    from bias_core.extensions.runtime import runtime_service_method as runtime_get_service_method
+
+    return runtime_get_service_method(*args, **kwargs)
 
 
 def _content_posts_service():
