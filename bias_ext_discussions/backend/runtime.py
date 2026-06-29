@@ -24,6 +24,8 @@ def discussion_service_provider() -> dict:
         "state_model": DiscussionUser,
         "approval_approved": Discussion.APPROVAL_APPROVED,
         "event_types": discussion_event_type_aliases(),
+        "can_view": _can_view_discussion,
+        "apply_visibility": _apply_visibility,
         "create": DiscussionService.create_discussion,
         "update": DiscussionService.update_discussion,
         "delete": DiscussionService.delete_discussion,
@@ -173,6 +175,26 @@ def _get_visible_discussion_ids(user=None, *, ability: str = "view", context: di
         ability=str(ability or "view"),
         context=resolved_context,
     ).values("id")
+
+
+def _can_view_discussion(discussion, user=None):
+    content_method = _content_discussions_method("can_view")
+    if content_method is not None:
+        return bool(content_method(discussion, user))
+
+    from bias_ext_discussions.backend import discussion_tracking
+
+    return discussion_tracking.can_view_discussion(discussion, user)
+
+
+def _apply_visibility(queryset, user=None):
+    content_method = _content_discussions_method("apply_visibility")
+    if content_method is not None:
+        return content_method(queryset, user)
+
+    from bias_ext_discussions.backend import discussion_tracking
+
+    return discussion_tracking.apply_visibility_filters(queryset, user)
 
 
 def _has_discussion_visibility(*, ability: str | None = None) -> bool:

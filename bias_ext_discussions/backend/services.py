@@ -208,10 +208,16 @@ class DiscussionService:
 
     @staticmethod
     def _can_view_discussion(discussion: Discussion, user: Optional[User]) -> bool:
+        can_view = _content_discussions_method("can_view")
+        if can_view is not None:
+            return bool(can_view(discussion, user))
         return discussion_tracking.can_view_discussion(discussion, user)
 
     @staticmethod
     def apply_visibility_filters(queryset, user: Optional[User] = None):
+        apply_visibility = _content_discussions_method("apply_visibility")
+        if apply_visibility is not None:
+            return apply_visibility(queryset, user)
         return discussion_tracking.apply_visibility_filters(queryset, user)
 
     @staticmethod

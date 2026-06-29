@@ -109,6 +109,8 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
             {"bias_content.backend.events"},
         )
         for key in (
+            "can_view",
+            "apply_visibility",
             "create",
             "update",
             "delete",
@@ -184,6 +186,8 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
             "list_approval_queue": Mock(return_value=[{"id": 1}]),
             "count_pending_approvals": Mock(return_value=2),
             "pending_first_post_ids": Mock(return_value=[3]),
+            "can_view": Mock(return_value=True),
+            "apply_visibility": Mock(return_value="content-filtered"),
             "get_visible_ids": Mock(return_value="content-visible"),
             "has_visibility": Mock(return_value=True),
             "validate_replyable": Mock(return_value="replyable"),
@@ -211,6 +215,8 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
             self.assertEqual(runtime._list_approval_queue(), [{"id": 1}])
             self.assertEqual(runtime._count_pending_approvals(), 2)
             self.assertEqual(runtime._pending_first_post_ids(), [3])
+            self.assertTrue(runtime._can_view_discussion(discussion, user))
+            self.assertEqual(runtime._apply_visibility("queryset", user), "content-filtered")
             self.assertEqual(
                 runtime._get_visible_discussion_ids(
                     user=user,
@@ -248,6 +254,8 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
         content_service["list_approval_queue"].assert_called_once_with()
         content_service["count_pending_approvals"].assert_called_once_with()
         content_service["pending_first_post_ids"].assert_called_once_with()
+        content_service["can_view"].assert_called_once_with(discussion, user)
+        content_service["apply_visibility"].assert_called_once_with("queryset", user)
         content_service["get_visible_ids"].assert_called_once_with(
             user=user,
             ability="view",
@@ -280,6 +288,30 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
             discussion_id=5,
             last_post_number=7,
         )
+
+    def test_discussion_service_visibility_delegates_to_content_foundation(self):
+        user = object()
+        discussion = object()
+        content_service = {
+            "can_view": Mock(return_value=True),
+            "apply_visibility": Mock(return_value="content-filtered"),
+        }
+
+        with patch(
+            "bias_ext_discussions.backend.services.get_extension_host_service",
+            return_value=content_service,
+        ), patch(
+            "bias_ext_discussions.backend.discussion_tracking.can_view_discussion",
+            side_effect=AssertionError("discussion service should use content can_view"),
+        ), patch(
+            "bias_ext_discussions.backend.discussion_tracking.apply_visibility_filters",
+            side_effect=AssertionError("discussion service should use content visibility"),
+        ):
+            self.assertTrue(DiscussionService._can_view_discussion(discussion, user))
+            self.assertEqual(DiscussionService.apply_visibility_filters("queryset", user), "content-filtered")
+
+        content_service["can_view"].assert_called_once_with(discussion, user)
+        content_service["apply_visibility"].assert_called_once_with("queryset", user)
 
     def test_content_post_boundary_uses_content_foundation_service(self):
         from bias_ext_discussions.backend import content_posts
