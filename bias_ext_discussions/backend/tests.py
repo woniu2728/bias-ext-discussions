@@ -161,6 +161,91 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
         self.assertEqual(payload, {"id": 42})
         serialize_mock.assert_called_once_with(42, user=None)
 
+    def test_timeline_merge_strategy_updates_previous_same_actor_retag_event(self):
+        from bias_ext_discussions.backend import timeline
+
+        actor = type("Actor", (), {"id": 7})()
+        discussion = type("Discussion", (), {"id": 11})()
+        previous = type(
+            "Post",
+            (),
+            {
+                "id": 13,
+                "user_id": 7,
+                "content": "added:Middle\nremoved:Initial",
+            },
+        )()
+
+        with patch(
+            "bias_ext_discussions.backend.timeline.get_runtime_user_by_id",
+            return_value=actor,
+        ), patch(
+            "bias_ext_discussions.backend.timeline.Discussion.objects.get",
+            return_value=discussion,
+        ), patch(
+            "bias_ext_discussions.backend.content_posts.get_latest_event_post",
+            return_value=previous,
+        ) as latest_mock, patch(
+            "bias_ext_discussions.backend.content_posts.update_event_post_content",
+            return_value=previous,
+        ) as update_mock, patch(
+            "bias_ext_discussions.backend.content_posts.create_post_event",
+            side_effect=AssertionError("merged timeline post should not create a new event post"),
+        ):
+            result = timeline.create_timeline_event_post(
+                discussion_id=discussion.id,
+                actor_user_id=actor.id,
+                post_type="discussionTagged",
+                content="added:Final\nremoved:Middle",
+                merge_strategy="same_actor_reversible",
+            )
+
+        self.assertIs(result, previous)
+        latest_mock.assert_called_once_with(discussion=discussion, post_type="discussionTagged")
+        update_mock.assert_called_once_with(previous, content="added:Final\nremoved:Initial", content_html="")
+
+    def test_timeline_merge_strategy_deletes_reverted_same_actor_retag_event(self):
+        from bias_ext_discussions.backend import timeline
+
+        actor = type("Actor", (), {"id": 7})()
+        discussion = type("Discussion", (), {"id": 11})()
+        previous = type(
+            "Post",
+            (),
+            {
+                "id": 13,
+                "user_id": 7,
+                "content": "added:Temporary\nremoved:Initial",
+            },
+        )()
+
+        with patch(
+            "bias_ext_discussions.backend.timeline.get_runtime_user_by_id",
+            return_value=actor,
+        ), patch(
+            "bias_ext_discussions.backend.timeline.Discussion.objects.get",
+            return_value=discussion,
+        ), patch(
+            "bias_ext_discussions.backend.content_posts.get_latest_event_post",
+            return_value=previous,
+        ), patch(
+            "bias_ext_discussions.backend.content_posts.delete_event_post",
+            return_value=True,
+        ) as delete_mock, patch(
+            "bias_ext_discussions.backend.content_posts.create_post_event",
+            side_effect=AssertionError("reverted timeline post should not create a new event post"),
+        ):
+            result = timeline.create_timeline_event_post(
+                discussion_id=discussion.id,
+                actor_user_id=actor.id,
+                post_type="discussionTagged",
+                content="added:Initial\nremoved:Temporary",
+                merge_strategy="same_actor_reversible",
+            )
+
+        self.assertIs(result, previous)
+        delete_mock.assert_called_once_with(previous)
+
     def test_realtime_discussion_payload_uses_content_foundation_serializer(self):
         from bias_ext_discussions.backend import realtime
 

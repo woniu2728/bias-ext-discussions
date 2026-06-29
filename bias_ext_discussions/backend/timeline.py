@@ -27,7 +27,13 @@ def make_timeline_context(event, **extra):
     return SimpleNamespace(**payload)
 
 
-def create_timeline_from_builder(event, builder, *, update_discussion_last_post: bool | None = None) -> None:
+def create_timeline_from_builder(
+    event,
+    builder,
+    *,
+    update_discussion_last_post: bool | None = None,
+    merge_strategy: str = "",
+) -> None:
     built = builder(event)
     if not built:
         return
@@ -39,6 +45,7 @@ def create_timeline_from_builder(event, builder, *, update_discussion_last_post:
         post_type=post_type,
         content=content,
         update_discussion_last_post=update_discussion_last_post,
+        merge_strategy=merge_strategy,
     )
 
 
@@ -49,6 +56,7 @@ def create_timeline_event_post(
     post_type: str,
     content: str,
     update_discussion_last_post: bool | None = None,
+    merge_strategy: str = "",
 ) -> object | None:
     try:
         actor = get_runtime_user_by_id(actor_user_id)
@@ -57,6 +65,16 @@ def create_timeline_event_post(
         return None
     except Exception:
         return None
+
+    merged_post = _merge_timeline_event_post(
+        discussion=discussion,
+        actor=actor,
+        post_type=post_type,
+        content=content,
+        merge_strategy=merge_strategy,
+    )
+    if merged_post is not None:
+        return merged_post
 
     event_post = content_posts.create_post_event(
         discussion=discussion,
@@ -86,6 +104,55 @@ def create_timeline_event_post(
             "last_posted_user",
         ])
     return event_post
+
+
+def _merge_timeline_event_post(
+    *,
+    discussion,
+    actor,
+    post_type: str,
+    content: str,
+    merge_strategy: str,
+) -> object | None:
+    if str(merge_strategy or "").strip() != "same_actor_reversible":
+        return None
+
+    previous = content_posts.get_latest_event_post(discussion=discussion, post_type=post_type)
+    if previous is None or getattr(previous, "user_id", None) != getattr(actor, "id", None):
+        return None
+
+    previous_parts = _parse_tagged_event_content(getattr(previous, "content", ""))
+    current_parts = _parse_tagged_event_content(content)
+    if previous_parts is None or current_parts is None:
+        return None
+
+    if previous_parts[1] == current_parts[0]:
+        content_posts.delete_event_post(previous)
+        return previous
+
+    merged_content = _build_tagged_event_content(current_parts[0], previous_parts[1])
+    return content_posts.update_event_post_content(previous, content=merged_content, content_html="")
+
+
+def _parse_tagged_event_content(content: str | None) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+    added = None
+    removed = None
+    for line in str(content or "").splitlines():
+        normalized = line.strip()
+        if normalized.startswith("added:"):
+            added = tuple(item for item in normalized.removeprefix("added:").split("|") if item)
+        elif normalized.startswith("removed:"):
+            removed = tuple(item for item in normalized.removeprefix("removed:").split("|") if item)
+    if added is None or removed is None:
+        return None
+    return added, removed
+
+
+def _build_tagged_event_content(added: tuple[str, ...], removed: tuple[str, ...]) -> str:
+    return (
+        f"added:{'|'.join(added)}\n"
+        f"removed:{'|'.join(removed)}"
+    )
 
 
 def _post_type_counts_toward_discussion(post_type: str) -> bool:

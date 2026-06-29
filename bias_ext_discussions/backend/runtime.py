@@ -495,6 +495,7 @@ def create_timeline_from_builder(
     *,
     extra: dict | None = None,
     update_discussion_last_post: bool | None = None,
+    merge_strategy: str = "",
 ):
     from bias_ext_discussions.backend import timeline
 
@@ -519,5 +520,6 @@ def create_timeline_from_builder(
         context,
         build_content,
         update_discussion_last_post=update_discussion_last_post,
+        merge_strategy=merge_strategy,
     )
 

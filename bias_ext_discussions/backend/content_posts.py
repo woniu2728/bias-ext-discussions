@@ -86,3 +86,15 @@ def serialize_realtime_post_by_id(post_id, *, user=None):
 
 def create_post_event(**kwargs):
     return _content_posts_method("create_event_post")(**kwargs)
+
+
+def get_latest_event_post(**kwargs):
+    return _content_posts_method("get_latest_event_post")(**kwargs)
+
+
+def update_event_post_content(*args, **kwargs):
+    return _content_posts_method("update_event_post_content")(*args, **kwargs)
+
+
+def delete_event_post(*args, **kwargs):
+    return _content_posts_method("delete_event_post")(*args, **kwargs)
