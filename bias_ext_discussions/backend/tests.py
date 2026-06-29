@@ -148,6 +148,27 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
         self.assertEqual(payload, {"id": 42})
         serialize_mock.assert_called_once_with(42, user=None)
 
+    def test_content_post_boundary_uses_content_foundation_service(self):
+        from bias_ext_discussions.backend import content_posts
+
+        content_service = {
+            "create_first_post": Mock(return_value="created"),
+            "get_post_number": Mock(return_value=7),
+            "resolve_content_html": Mock(return_value="<p>body</p>"),
+        }
+
+        with patch(
+            "bias_ext_discussions.backend.content_posts.get_extension_host_service",
+            return_value=content_service,
+        ):
+            self.assertEqual(content_posts.create_first_post(discussion=object()), "created")
+            self.assertEqual(content_posts.get_discussion_post_number(42), 7)
+            self.assertEqual(content_posts.resolve_discussion_post_content_html(object()), "<p>body</p>")
+
+        content_service["create_first_post"].assert_called_once()
+        content_service["get_post_number"].assert_called_once_with(42)
+        content_service["resolve_content_html"].assert_called_once()
+
     def test_discussions_capabilities_are_filtered_when_extension_disabled(self):
         self.disable_extension_for_test("discussions")
 

@@ -10,7 +10,8 @@
   ],
   "dependencies": [
     "core",
-    "users"
+    "users",
+    "content"
   ],
   "provides": [
     "discussions",
