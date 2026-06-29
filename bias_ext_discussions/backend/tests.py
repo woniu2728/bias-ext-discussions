@@ -29,7 +29,6 @@ from bias_ext_discussions.backend.visibility import (
     build_discussion_visibility_q,
     scope_discussion_view,
 )
-from bias_ext_posts.backend.visibility import build_post_visibility_q
 from bias_ext_discussions.backend.handlers import discussion_resource_endpoints
 from bias_ext_discussions.backend.models import Discussion, DiscussionUser
 from bias_ext_discussions.backend.schemas import DiscussionCreateSchema, DiscussionUpdateSchema
@@ -44,6 +43,10 @@ def _runtime_facade(name: str):
 
 def create_runtime_post(*args, **kwargs):
     return _runtime_facade("create_runtime_post")(*args, **kwargs)
+
+
+def can_runtime_view_post(*args, **kwargs):
+    return _runtime_facade("can_runtime_view_post")(*args, **kwargs)
 
 
 def follow_runtime_discussion(*args, **kwargs):
@@ -665,7 +668,7 @@ class DiscussionApiTests(TestCase):
         self.assertTrue(discussion.is_private)
         self.assertTrue(first_post.is_private)
         self.assertFalse(Discussion.objects.filter(build_discussion_visibility_q(self.reader), id=discussion.id).exists())
-        self.assertFalse(Post.objects.filter(build_post_visibility_q(self.reader), id=first_post.id).exists())
+        self.assertFalse(can_runtime_view_post(first_post, self.reader))
 
     def test_model_private_extender_refreshes_on_model_save(self):
         from types import SimpleNamespace
