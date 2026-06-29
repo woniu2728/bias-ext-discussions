@@ -96,6 +96,7 @@ def apply_discussion_list_resource_preloads(queryset, user=None, resource_option
         default_includes,
         resource_options.includes,
     )
+    queryset = _apply_discussion_user_resource_preloads(queryset, user=user)
     planned = get_resource_registry().apply_preload_plan(
         queryset,
         "discussion",
@@ -106,7 +107,41 @@ def apply_discussion_list_resource_preloads(queryset, user=None, resource_option
     return _filter_invalid_discussion_prefetches(planned)
 
 
+def _apply_discussion_user_resource_preloads(queryset, *, user=None):
+    plan = get_resource_registry().build_preload_plan("discussion_user", {"user": user})
+    select_related = []
+    prefetch_related = []
+    for relation in ("user", "last_posted_user"):
+        for item in plan.select_related:
+            select_related.append(f"{relation}__{item}")
+        for item in plan.prefetch_related:
+            if isinstance(item, str):
+                prefetch_related.append(f"{relation}__{item}")
+    if select_related:
+        queryset = queryset.select_related(*select_related)
+    if prefetch_related:
+        queryset = queryset.prefetch_related(*prefetch_related)
+    return queryset
+
+
 def _filter_invalid_discussion_prefetches(queryset):
+    select_related = getattr(queryset.query, "select_related", None)
+    if isinstance(select_related, dict):
+        valid_selects = []
+        for lookup in _flatten_select_related(select_related):
+            first_part = str(lookup or "").split("__", 1)[0]
+            if not first_part:
+                continue
+            try:
+                queryset.model._meta.get_field(first_part)
+            except Exception:
+                continue
+            valid_selects.append(lookup)
+        if len(valid_selects) != len(_flatten_select_related(select_related)):
+            queryset = queryset.select_related(None)
+            if valid_selects:
+                queryset = queryset.select_related(*valid_selects)
+
     prefetches = tuple(getattr(queryset, "_prefetch_related_lookups", ()) or ())
     if not prefetches:
         return queryset
@@ -124,6 +159,16 @@ def _filter_invalid_discussion_prefetches(queryset):
     if len(valid_prefetches) == len(prefetches):
         return queryset
     return queryset.prefetch_related(None).prefetch_related(*valid_prefetches)
+
+
+def _flatten_select_related(tree, prefix=""):
+    output = []
+    for key, value in dict(tree or {}).items():
+        path = f"{prefix}__{key}" if prefix else str(key)
+        output.append(path)
+        if isinstance(value, dict):
+            output.extend(_flatten_select_related(value, path))
+    return output
 
 
 def serialize_discussion_sort(definition):

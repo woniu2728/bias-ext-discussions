@@ -168,9 +168,11 @@ def discussion_post_preload_resolver(context: dict):
     if "user" in nested_includes:
         select_related.append("user")
         prefetch_related.append("user__user_groups")
+        _merge_user_resource_preloads("post_user", "user", select_related, prefetch_related, context)
     if "edited_user" in nested_includes:
         select_related.append("edited_user")
         prefetch_related.append("edited_user__user_groups")
+        _merge_user_resource_preloads("post_user", "edited_user", select_related, prefetch_related, context)
     post_queryset = Post.objects.select_related(*select_related).filter(
         _discussion_post_include_filter(context),
     )
@@ -211,9 +213,11 @@ def attach_discussion_resource_posts(discussions, *, context: dict | None = None
     if "user" in nested_includes:
         select_related.append("user")
         prefetch_related.append("user__user_groups")
+        _merge_user_resource_preloads("post_user", "user", select_related, prefetch_related, resolved_context)
     if "edited_user" in nested_includes:
         select_related.append("edited_user")
         prefetch_related.append("edited_user__user_groups")
+        _merge_user_resource_preloads("post_user", "edited_user", select_related, prefetch_related, resolved_context)
 
     post_queryset = Post.objects.filter(id__in=post_ids).select_related(*select_related)
     if prefetch_related:
@@ -276,6 +280,26 @@ def _runtime_post_model():
     from bias_ext_discussions.backend import content_posts
 
     return content_posts.get_post_model_or_none()
+
+
+def _merge_user_resource_preloads(
+    resource: str,
+    relation: str,
+    select_related: list[str],
+    prefetch_related: list,
+    context: dict,
+) -> None:
+    from bias_core.extensions.runtime import get_runtime_resource_registry
+
+    plan = get_runtime_resource_registry().build_preload_plan(resource, context)
+    for item in plan.select_related:
+        nested_item = f"{relation}__{item}"
+        if nested_item not in select_related:
+            select_related.append(nested_item)
+    for item in plan.prefetch_related:
+        nested_item = f"{relation}__{item}" if isinstance(item, str) else item
+        if nested_item not in prefetch_related:
+            prefetch_related.append(nested_item)
 
 
 def _discussion_post_nested_includes(context: dict) -> set[str]:

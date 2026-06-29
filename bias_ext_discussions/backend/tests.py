@@ -963,6 +963,30 @@ class DiscussionApiTests(TestCase):
         ]
         self.assertLessEqual(len(select_group_queries), 2)
 
+    def test_discussion_list_default_page_has_bounded_queries(self):
+        member_group = Group.objects.create(name="DiscussionDefaultListQueries", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="viewForum")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        self.author.user_groups.add(member_group)
+        for index in range(8):
+            DiscussionService.create_discussion(
+                title=f"默认列表查询 {index}",
+                content="默认列表内容",
+                user=self.author,
+            )
+
+        with CaptureQueriesContext(connection) as context:
+            response = self.client.get(
+                "/api/discussions/",
+                {"limit": 8},
+                **self.auth_header(self.author),
+            )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertEqual(len(payload["data"]), 8)
+        self.assertLessEqual(len(context.captured_queries), 18)
+
     def test_discussion_list_post_includes_do_not_query_posts_per_discussion(self):
         member_group = Group.objects.create(name="DiscussionPostIncludeQueries", color="#4d698e")
         Permission.objects.create(group=member_group, permission="viewForum")
