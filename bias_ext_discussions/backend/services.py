@@ -483,10 +483,17 @@ class DiscussionService:
 
     @staticmethod
     def _attach_user_read_state(discussions: List[Discussion], user: Optional[User]) -> None:
+        attach_read_state = _content_discussions_method("attach_read_state")
+        if attach_read_state is not None:
+            attach_read_state(discussions, user)
+            return
         discussion_tracking.attach_user_read_state(discussions, user)
 
     @staticmethod
     def mark_all_as_read(user: User):
+        mark_all_read = _content_discussions_method("mark_all_read")
+        if mark_all_read is not None:
+            return mark_all_read(user)
         return discussion_tracking.mark_all_as_read(user)
 
     @staticmethod

@@ -313,6 +313,30 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
         content_service["can_view"].assert_called_once_with(discussion, user)
         content_service["apply_visibility"].assert_called_once_with("queryset", user)
 
+    def test_discussion_service_read_state_helpers_delegate_to_content_foundation(self):
+        user = object()
+        discussions = [object()]
+        content_service = {
+            "attach_read_state": Mock(),
+            "mark_all_read": Mock(return_value="marked"),
+        }
+
+        with patch(
+            "bias_ext_discussions.backend.services.get_extension_host_service",
+            return_value=content_service,
+        ), patch(
+            "bias_ext_discussions.backend.discussion_tracking.attach_user_read_state",
+            side_effect=AssertionError("discussion service should use content read-state attach"),
+        ), patch(
+            "bias_ext_discussions.backend.discussion_tracking.mark_all_as_read",
+            side_effect=AssertionError("discussion service should use content mark-all-read"),
+        ):
+            DiscussionService._attach_user_read_state(discussions, user)
+            self.assertEqual(DiscussionService.mark_all_as_read(user), "marked")
+
+        content_service["attach_read_state"].assert_called_once_with(discussions, user)
+        content_service["mark_all_read"].assert_called_once_with(user)
+
     def test_content_post_boundary_uses_content_foundation_service(self):
         from bias_ext_discussions.backend import content_posts
 
