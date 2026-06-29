@@ -618,6 +618,28 @@ class DiscussionApiTests(TestCase):
         self.assertNotIn("tag_ids", DiscussionCreateSchema.model_fields)
         self.assertNotIn("tag_ids", DiscussionUpdateSchema.model_fields)
 
+    def test_create_discussion_validates_required_extension_relationships(self):
+        registry = ResourceRegistry()
+        registry.register_relationship(
+            ResourceRelationshipDefinition(
+                resource="discussion",
+                relationship="required_marker",
+                module_id="discussions",
+                resolver=lambda item, context: None,
+                writable=True,
+                required_on_create=True,
+                setter=lambda item, value, context: None,
+            )
+        )
+
+        with patch("bias_core.extensions.runtime.get_runtime_resource_registry", return_value=registry):
+            with self.assertRaises(ValueError):
+                DiscussionService.create_discussion(
+                    title="Missing extension relationship",
+                    content="Extension-defined required relationships must be enforced.",
+                    user=self.author,
+                )
+
     def test_create_discussion_dispatches_created_event_after_commit(self):
         events, dispatch_patch = capture_runtime_events()
         with dispatch_patch:

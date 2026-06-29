@@ -167,11 +167,18 @@ def _apply_discussion_resource_relationships(
         "user": user,
         "actor_user_id": actor_user_id,
     }
+    registry = get_runtime_resource_registry()
     relationship_payload = _discussion_relationship_payload(payload)
+    registry.validate_required_resource_payload(
+        "discussion",
+        discussion,
+        {},
+        {**context, "payload": relationship_payload},
+        creating=creating,
+    )
     if not relationship_payload:
         return context
     context["payload"] = relationship_payload
-    registry = get_runtime_resource_registry()
     registry.apply_resource_payload(
         "discussion",
         discussion,
