@@ -1,5 +1,20 @@
 from __future__ import annotations
 
+
+def _content_discussions_method(name: str):
+    from bias_core.extensions.runtime import get_extension_host_service
+
+    content_discussions = get_extension_host_service("content.discussions", None)
+    if content_discussions is None:
+        return None
+    method = (
+        content_discussions.get(name)
+        if isinstance(content_discussions, dict)
+        else getattr(content_discussions, name, None)
+    )
+    return method if callable(method) else None
+
+
 def discussion_service_provider() -> dict:
     from bias_ext_discussions.backend.models import Discussion, DiscussionUser
     from bias_ext_discussions.backend.services import DiscussionService
@@ -31,10 +46,10 @@ def discussion_service_provider() -> dict:
         "refresh_approved_stats": _refresh_approved_stats,
         "reply_notification_context": _reply_notification_context,
         "is_subscribed": _is_subscribed,
-        "set_subscription": DiscussionService.set_subscription,
-        "follow_if_enabled": DiscussionService.follow_discussion,
+        "set_subscription": _set_subscription,
+        "follow_if_enabled": _follow_if_enabled,
         "mark_read": _mark_read,
-        "clamp_read_states": DiscussionService.clamp_read_states,
+        "clamp_read_states": _clamp_read_states,
         "serialize": _serialize_discussion,
         "serialize_by_id": _serialize_discussion_by_id,
     }
@@ -76,6 +91,10 @@ def discussion_timeline_provider() -> dict:
 
 
 def _list_approval_queue() -> list[dict]:
+    content_method = _content_discussions_method("list_approval_queue")
+    if content_method is not None:
+        return list(content_method() or [])
+
     from bias_ext_discussions.backend.models import Discussion
 
     discussions = Discussion.objects.filter(
@@ -85,6 +104,10 @@ def _list_approval_queue() -> list[dict]:
 
 
 def _count_pending_approvals() -> int:
+    content_method = _content_discussions_method("count_pending_approvals")
+    if content_method is not None:
+        return int(content_method() or 0)
+
     from bias_ext_discussions.backend.models import Discussion
 
     return Discussion.objects.filter(approval_status=Discussion.APPROVAL_PENDING).count()
@@ -121,6 +144,10 @@ def _serialize_discussion_by_id(discussion_id: int, user=None, **kwargs):
 
 
 def _pending_first_post_ids() -> list[int]:
+    content_method = _content_discussions_method("pending_first_post_ids")
+    if content_method is not None:
+        return [int(item) for item in (content_method() or []) if item is not None]
+
     from bias_ext_discussions.backend.models import Discussion
 
     return list(
@@ -131,6 +158,10 @@ def _pending_first_post_ids() -> list[int]:
 
 
 def _get_visible_discussion_ids(user=None, *, ability: str = "view", context: dict | None = None):
+    content_method = _content_discussions_method("get_visible_ids")
+    if content_method is not None:
+        return content_method(user=user, ability=ability, context=context or {})
+
     from bias_core.extensions.platform import apply_model_visibility_scope
     from bias_ext_discussions.backend.models import Discussion
 
@@ -145,6 +176,10 @@ def _get_visible_discussion_ids(user=None, *, ability: str = "view", context: di
 
 
 def _has_discussion_visibility(*, ability: str | None = None) -> bool:
+    content_method = _content_discussions_method("has_visibility")
+    if content_method is not None:
+        return bool(content_method(ability=ability))
+
     from bias_core.extensions.runtime import has_runtime_model_visibility
     from bias_ext_discussions.backend.models import Discussion
 
@@ -206,6 +241,10 @@ def _serialize_user(user) -> dict | None:
 
 
 def _validate_replyable(discussion_id: int, user, *, discussion=None):
+    content_method = _content_discussions_method("validate_replyable")
+    if content_method is not None:
+        return content_method(discussion_id, user, discussion=discussion)
+
     from django.core.exceptions import PermissionDenied
     from bias_core.extensions.runtime import evaluate_runtime_model_policy
     from bias_ext_discussions.backend.models import Discussion
@@ -234,6 +273,10 @@ def _validate_replyable(discussion_id: int, user, *, discussion=None):
 
 
 def _lock_for_post_number(discussion_id: int):
+    content_method = _content_discussions_method("lock_for_post_number")
+    if content_method is not None:
+        return content_method(discussion_id)
+
     from bias_ext_discussions.backend.models import Discussion
 
     return Discussion.objects.select_for_update().get(id=discussion_id)
@@ -253,6 +296,10 @@ def _apply_counted_filter(queryset, *, prefix: str = ""):
 
 
 def _refresh_approved_stats(discussion, *, discussion_counted_post_types):
+    content_method = _content_discussions_method("refresh_approved_stats")
+    if content_method is not None:
+        return content_method(discussion, discussion_counted_post_types=discussion_counted_post_types)
+
     from bias_ext_discussions.backend import content_posts
 
     stats = content_posts.get_approved_discussion_post_stats(
@@ -278,6 +325,10 @@ def _refresh_approved_stats(discussion, *, discussion_counted_post_types):
 
 
 def _reply_notification_context(discussion_id: int, post_id: int, from_user):
+    content_method = _content_discussions_method("reply_notification_context")
+    if content_method is not None:
+        return content_method(discussion_id, post_id, from_user)
+
     from bias_ext_discussions.backend import content_posts
     from bias_ext_discussions.backend.models import Discussion, DiscussionUser
 
@@ -315,6 +366,10 @@ def _reply_notification_context(discussion_id: int, post_id: int, from_user):
 
 
 def _is_subscribed(discussion, user) -> bool:
+    content_method = _content_discussions_method("is_subscribed")
+    if content_method is not None:
+        return bool(content_method(discussion, user))
+
     if not user or not getattr(user, "is_authenticated", False):
         return False
 
@@ -327,6 +382,39 @@ def _is_subscribed(discussion, user) -> bool:
     ).exists()
 
 
+def _set_subscription(discussion_id: int, user, subscribed: bool) -> bool:
+    content_method = _content_discussions_method("set_subscription")
+    if content_method is not None:
+        return bool(content_method(discussion_id, user, subscribed))
+
+    from bias_ext_discussions.backend.services import DiscussionService
+
+    return bool(DiscussionService.set_subscription(discussion_id, user, subscribed))
+
+
+def _follow_if_enabled(
+    *,
+    discussion_id: int,
+    user_id: int,
+    last_read_post_number: int | None = None,
+) -> bool:
+    content_method = _content_discussions_method("follow_if_enabled")
+    if content_method is not None:
+        return bool(content_method(
+            discussion_id=discussion_id,
+            user_id=user_id,
+            last_read_post_number=last_read_post_number,
+        ))
+
+    from bias_ext_discussions.backend.services import DiscussionService
+
+    return bool(DiscussionService.follow_discussion(
+        discussion_id=discussion_id,
+        user_id=user_id,
+        last_read_post_number=last_read_post_number,
+    ))
+
+
 def _mark_read(
     *,
     discussion_id: int,
@@ -335,6 +423,16 @@ def _mark_read(
     subscribed: bool | None = None,
     require_view: bool = True,
 ) -> bool:
+    content_method = _content_discussions_method("mark_read")
+    if content_method is not None:
+        return bool(content_method(
+            discussion_id=discussion_id,
+            user=user,
+            last_read_post_number=last_read_post_number,
+            subscribed=subscribed,
+            require_view=require_view,
+        ))
+
     if not user or not getattr(user, "is_authenticated", False):
         return False
 
@@ -350,6 +448,19 @@ def _mark_read(
         state.is_subscribed = bool(subscribed)
         state.save(update_fields=["is_subscribed"])
     return True
+
+
+def _clamp_read_states(*, discussion_id: int, last_post_number: int | None) -> int:
+    content_method = _content_discussions_method("clamp_read_states")
+    if content_method is not None:
+        return int(content_method(discussion_id=discussion_id, last_post_number=last_post_number) or 0)
+
+    from bias_ext_discussions.backend.services import DiscussionService
+
+    return int(DiscussionService.clamp_read_states(
+        discussion_id=discussion_id,
+        last_post_number=last_post_number,
+    ) or 0)
 
 
 def create_timeline_from_builder(

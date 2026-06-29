@@ -175,6 +175,109 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
         self.assertEqual(payload, {"id": 42, "title": "Realtime content discussion"})
         content_service["serialize"].assert_called_once_with(discussion, user=None)
 
+    def test_discussion_runtime_read_helpers_delegate_to_content_foundation(self):
+        from bias_ext_discussions.backend import runtime
+
+        discussion = object()
+        user = object()
+        content_service = {
+            "list_approval_queue": Mock(return_value=[{"id": 1}]),
+            "count_pending_approvals": Mock(return_value=2),
+            "pending_first_post_ids": Mock(return_value=[3]),
+            "get_visible_ids": Mock(return_value="content-visible"),
+            "has_visibility": Mock(return_value=True),
+            "validate_replyable": Mock(return_value="replyable"),
+            "lock_for_post_number": Mock(return_value="locked"),
+            "refresh_approved_stats": Mock(return_value="stats"),
+            "reply_notification_context": Mock(return_value={"reply": True}),
+            "is_subscribed": Mock(return_value=True),
+            "set_subscription": Mock(return_value=True),
+            "follow_if_enabled": Mock(return_value=True),
+            "mark_read": Mock(return_value=True),
+            "clamp_read_states": Mock(return_value=4),
+        }
+
+        with patch(
+            "bias_core.extensions.runtime.get_extension_host_service",
+            return_value=content_service,
+        ), patch(
+            "bias_ext_discussions.backend.models.Discussion.objects",
+            side_effect=AssertionError("discussion helper should delegate to content"),
+        ), patch(
+            "bias_ext_discussions.backend.models.DiscussionUser.objects",
+            side_effect=AssertionError("discussion state helper should delegate to content"),
+        ):
+            self.assertEqual(runtime._list_approval_queue(), [{"id": 1}])
+            self.assertEqual(runtime._count_pending_approvals(), 2)
+            self.assertEqual(runtime._pending_first_post_ids(), [3])
+            self.assertEqual(
+                runtime._get_visible_discussion_ids(
+                    user=user,
+                    ability="view",
+                    context={"scope": "all"},
+                ),
+                "content-visible",
+            )
+            self.assertTrue(runtime._has_discussion_visibility(ability="view"))
+            self.assertEqual(runtime._validate_replyable(5, user, discussion=discussion), "replyable")
+            self.assertEqual(runtime._lock_for_post_number(5), "locked")
+            self.assertEqual(
+                runtime._refresh_approved_stats(
+                    discussion,
+                    discussion_counted_post_types=("comment",),
+                ),
+                "stats",
+            )
+            self.assertEqual(runtime._reply_notification_context(5, 8, user), {"reply": True})
+            self.assertTrue(runtime._is_subscribed(discussion, user))
+            self.assertTrue(runtime._set_subscription(5, user, True))
+            self.assertTrue(runtime._follow_if_enabled(discussion_id=5, user_id=6, last_read_post_number=7))
+            self.assertTrue(
+                runtime._mark_read(
+                    discussion_id=5,
+                    user=user,
+                    last_read_post_number=7,
+                    subscribed=True,
+                    require_view=False,
+                )
+            )
+            self.assertEqual(runtime._clamp_read_states(discussion_id=5, last_post_number=7), 4)
+
+        content_service["list_approval_queue"].assert_called_once_with()
+        content_service["count_pending_approvals"].assert_called_once_with()
+        content_service["pending_first_post_ids"].assert_called_once_with()
+        content_service["get_visible_ids"].assert_called_once_with(
+            user=user,
+            ability="view",
+            context={"scope": "all"},
+        )
+        content_service["has_visibility"].assert_called_once_with(ability="view")
+        content_service["validate_replyable"].assert_called_once_with(5, user, discussion=discussion)
+        content_service["lock_for_post_number"].assert_called_once_with(5)
+        content_service["refresh_approved_stats"].assert_called_once_with(
+            discussion,
+            discussion_counted_post_types=("comment",),
+        )
+        content_service["reply_notification_context"].assert_called_once_with(5, 8, user)
+        content_service["is_subscribed"].assert_called_once_with(discussion, user)
+        content_service["set_subscription"].assert_called_once_with(5, user, True)
+        content_service["follow_if_enabled"].assert_called_once_with(
+            discussion_id=5,
+            user_id=6,
+            last_read_post_number=7,
+        )
+        content_service["mark_read"].assert_called_once_with(
+            discussion_id=5,
+            user=user,
+            last_read_post_number=7,
+            subscribed=True,
+            require_view=False,
+        )
+        content_service["clamp_read_states"].assert_called_once_with(
+            discussion_id=5,
+            last_post_number=7,
+        )
+
     def test_content_post_boundary_uses_content_foundation_service(self):
         from bias_ext_discussions.backend import content_posts
 
