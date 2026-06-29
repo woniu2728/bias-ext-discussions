@@ -944,6 +944,40 @@ class DiscussionApiTests(TestCase):
         self.assertEqual(payload["last_post"]["user"]["id"], self.reader.id)
         self.assertEqual(payload["first_post"]["user"]["primary_group"]["name"], member_group.name)
 
+    def test_discussion_detail_post_includes_have_bounded_queries(self):
+        member_group = Group.objects.create(name="DiscussionDetailQueries", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="viewForum")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        Permission.objects.create(group=member_group, permission="discussion.reply")
+        self.author.user_groups.add(member_group)
+        self.reader.user_groups.add(member_group)
+        discussion = DiscussionService.create_discussion(
+            title="Detail query budget discussion",
+            content="First post content",
+            user=self.author,
+        )
+        reply = create_runtime_post(
+            discussion_id=discussion.id,
+            content="Last post content",
+            user=self.reader,
+        )
+        discussion.refresh_from_db()
+
+        with CaptureQueriesContext(connection) as context:
+            response = self.client.get(
+                f"/api/discussions/{discussion.id}",
+                {"include": "first_post.user,last_post.user"},
+                **self.auth_header(self.author),
+            )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertEqual(payload["first_post"]["id"], discussion.first_post_id)
+        self.assertEqual(payload["last_post"]["id"], reply.id)
+        self.assertEqual(payload["first_post"]["user"]["primary_group"]["name"], member_group.name)
+        query_summary = "\n".join(query["sql"] for query in context.captured_queries)
+        self.assertLessEqual(len(context.captured_queries), 14, query_summary)
+
     def test_discussion_list_avoids_n_plus_one_for_registered_user_relationships(self):
         for index in range(3):
             DiscussionService.create_discussion(

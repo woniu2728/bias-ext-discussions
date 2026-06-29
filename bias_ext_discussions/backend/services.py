@@ -461,7 +461,7 @@ class DiscussionService:
 
             # 仅附加当前阅读状态，不在进入讨论页时直接清空未读
             if user and user.is_authenticated:
-                DiscussionUser.objects.get_or_create(
+                state, _ = DiscussionUser.objects.get_or_create(
                     discussion=discussion,
                     user=user,
                     defaults={
@@ -469,7 +469,7 @@ class DiscussionService:
                         'last_read_post_number': 1 if discussion.last_post_number else 0,
                     }
                 )
-                DiscussionService._attach_user_read_state([discussion], user)
+                DiscussionService._apply_user_read_state(discussion, user, state)
             else:
                 discussion.is_subscribed = False
                 discussion.last_read_at = None
@@ -488,6 +488,26 @@ class DiscussionService:
             attach_read_state(discussions, user)
             return
         discussion_tracking.attach_user_read_state(discussions, user)
+
+    @staticmethod
+    def _apply_user_read_state(discussion: Discussion, user: User, state: DiscussionUser | None) -> None:
+        marked_all_as_read_at = getattr(user, "marked_all_as_read_at", None)
+        last_read_at = state.last_read_at if state else None
+        last_read_post_number = state.last_read_post_number if state else 0
+
+        if (
+            marked_all_as_read_at
+            and discussion.last_posted_at
+            and discussion.last_posted_at <= marked_all_as_read_at
+        ):
+            last_read_at = marked_all_as_read_at
+            last_read_post_number = max(last_read_post_number, discussion.last_post_number or 0)
+
+        discussion.is_subscribed = bool(state and state.is_subscribed)
+        discussion.last_read_at = last_read_at
+        discussion.last_read_post_number = last_read_post_number
+        discussion.unread_count = max((discussion.last_post_number or 0) - last_read_post_number, 0)
+        discussion.is_unread = discussion.unread_count > 0
 
     @staticmethod
     def mark_all_as_read(user: User):

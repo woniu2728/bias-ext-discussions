@@ -25,19 +25,28 @@ def get_resource_registry():
     return get_runtime_resource_registry()
 
 
-def serialize_discussion_payload(discussion, user=None, resource_options=None, default_includes=()):
+def serialize_discussion_payload(
+    discussion,
+    user=None,
+    resource_options=None,
+    default_includes=(),
+    resource_context=None,
+):
     resource_options = resource_options or ResourceQueryOptions()
     includes = merge_resource_includes(
         ("user", "last_posted_user"),
         default_includes,
         resource_options.includes,
     )
+    resolved_context = {"user": user, "include": includes}
+    if resource_context:
+        resolved_context.update(resource_context)
     payload = DiscussionOutSchema.model_validate(discussion).model_dump()
     payload.update(
         get_resource_registry().serialize(
             "discussion",
             discussion,
-            {"user": user, "include": includes},
+            resolved_context,
             only=resource_options.fields,
             include=includes,
         )
@@ -86,7 +95,8 @@ def apply_discussion_resource_preloads(queryset, user=None, resource_options=Non
         only=resource_options.fields,
         include=includes,
     )
-    return _filter_invalid_discussion_prefetches(planned)
+    planned = _filter_invalid_discussion_prefetches(planned)
+    return _dedupe_discussion_user_group_prefetches(planned, includes)
 
 
 def apply_discussion_list_resource_preloads(queryset, user=None, resource_options=None, default_includes=()):
@@ -159,6 +169,31 @@ def _filter_invalid_discussion_prefetches(queryset):
     if len(valid_prefetches) == len(prefetches):
         return queryset
     return queryset.prefetch_related(None).prefetch_related(*valid_prefetches)
+
+
+def _dedupe_discussion_user_group_prefetches(queryset, includes):
+    include_set = set(str(item or "").strip() for item in includes or () if str(item or "").strip())
+    redundant_prefetches = set()
+    if "first_post.user" in include_set:
+        redundant_prefetches.add("user__user_groups")
+    if "last_post.user" in include_set:
+        redundant_prefetches.add("last_posted_user__user_groups")
+    if not redundant_prefetches:
+        return queryset
+
+    prefetches = tuple(getattr(queryset, "_prefetch_related_lookups", ()) or ())
+    if not prefetches:
+        return queryset
+
+    kept_prefetches = []
+    for item in prefetches:
+        lookup = str(getattr(item, "prefetch_through", item) or "")
+        if lookup in redundant_prefetches:
+            continue
+        kept_prefetches.append(item)
+    if len(kept_prefetches) == len(prefetches):
+        return queryset
+    return queryset.prefetch_related(None).prefetch_related(*kept_prefetches)
 
 
 def _flatten_select_related(tree, prefix=""):
@@ -471,9 +506,13 @@ def dispatch_discussion_show(context):
     if not discussion:
         return api_error("讨论不存在", status=404)
 
+    _reuse_discussion_user_group_cache_from_resource_posts(discussion)
+
     first_post = None
     if discussion.first_post_id:
-        post = content_posts.get_first_post(discussion)
+        post = _get_prefetched_discussion_post(discussion, discussion.first_post_id)
+        if post is None:
+            post = content_posts.get_first_post(discussion)
         if post is not None:
             first_post = {
                 "id": post.id,
@@ -487,14 +526,55 @@ def dispatch_discussion_show(context):
                 "approval_note": post.approval_note,
             }
 
+    resource_context = {
+        "post_visibility_checked": True,
+        "discussion_tag_visibility_cache": {},
+        "plain_related_fields": {
+            "post": ("user",),
+        },
+    }
     response_data = serialize_discussion_payload(
         discussion,
         user=user,
         resource_options=resource_options,
         default_includes=default_includes,
+        resource_context=resource_context,
     )
     response_data["first_post"] = first_post
     return response_data
+
+
+def _get_prefetched_discussion_post(discussion, post_id):
+    if not post_id:
+        return None
+    for post in getattr(discussion, "resource_posts", None) or ():
+        if getattr(post, "id", None) == post_id:
+            return post
+    return None
+
+
+def _reuse_discussion_user_group_cache_from_resource_posts(discussion):
+    posts_by_user_id = {}
+    for post in getattr(discussion, "resource_posts", None) or ():
+        post_user = getattr(post, "user", None)
+        if post_user is not None:
+            posts_by_user_id[getattr(post_user, "id", None)] = post_user
+
+    for relation in ("user", "last_posted_user"):
+        discussion_user = getattr(discussion, relation, None)
+        if discussion_user is None:
+            continue
+        post_user = posts_by_user_id.get(getattr(discussion_user, "id", None))
+        if post_user is None:
+            continue
+        group_cache = getattr(post_user, "_prefetched_objects_cache", {}).get("user_groups")
+        if group_cache is None:
+            continue
+        discussion_cache = getattr(discussion_user, "_prefetched_objects_cache", None)
+        if discussion_cache is None:
+            discussion_cache = {}
+            setattr(discussion_user, "_prefetched_objects_cache", discussion_cache)
+        discussion_cache.setdefault("user_groups", group_cache)
 
 
 def dispatch_discussion_mark_all_read(context):
