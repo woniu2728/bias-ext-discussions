@@ -504,8 +504,8 @@ class DiscussionApiTests(TestCase):
         return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
 
     def test_discussion_core_schemas_do_not_expose_tag_ids(self):
-        self.assertNotIn("tag_ids", DiscussionCreateSchema.__fields__)
-        self.assertNotIn("tag_ids", DiscussionUpdateSchema.__fields__)
+        self.assertNotIn("tag_ids", DiscussionCreateSchema.model_fields)
+        self.assertNotIn("tag_ids", DiscussionUpdateSchema.model_fields)
 
     def test_create_discussion_dispatches_created_event_after_commit(self):
         events, dispatch_patch = capture_runtime_events()

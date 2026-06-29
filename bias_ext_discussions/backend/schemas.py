@@ -3,7 +3,7 @@
 """
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class DiscussionCreateSchema(BaseModel):
@@ -11,11 +11,12 @@ class DiscussionCreateSchema(BaseModel):
     title: str = Field(..., min_length=1, max_length=200, description="讨论标题")
     content: str = Field(..., min_length=1, description="第一条帖子内容")
 
-    @validator('title')
-    def validate_title(cls, v):
-        if not v.strip():
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value):
+        if not value.strip():
             raise ValueError('标题不能为空')
-        return v.strip()
+        return value.strip()
 
 
 class DiscussionUpdateSchema(BaseModel):
@@ -26,13 +27,14 @@ class DiscussionUpdateSchema(BaseModel):
     is_sticky: Optional[bool] = Field(None, description="是否置顶")
     is_hidden: Optional[bool] = Field(None, description="是否隐藏")
 
-    @validator('title')
-    def validate_optional_title(cls, v):
-        if v is None:
-            return v
-        if not v.strip():
+    @field_validator("title")
+    @classmethod
+    def validate_optional_title(cls, value):
+        if value is None:
+            return value
+        if not value.strip():
             raise ValueError('标题不能为空')
-        return v.strip()
+        return value.strip()
 
 
 class DiscussionReadStateSchema(BaseModel):
@@ -49,8 +51,7 @@ class UserSimpleSchema(BaseModel):
         icon: str = ""
         is_hidden: bool = False
 
-        class Config:
-            from_attributes = True
+        model_config = ConfigDict(from_attributes=True)
 
     id: int
     username: str
@@ -58,8 +59,7 @@ class UserSimpleSchema(BaseModel):
     avatar_url: Optional[str] = None
     primary_group: Optional[GroupBadgeSchema] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class DiscussionOutSchema(BaseModel):
     """讨论输出"""
@@ -88,6 +88,5 @@ class DiscussionOutSchema(BaseModel):
     hidden_at: Optional[datetime] = None
     tags: List[dict] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 

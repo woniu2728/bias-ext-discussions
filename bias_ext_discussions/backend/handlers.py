@@ -32,7 +32,7 @@ def serialize_discussion_payload(discussion, user=None, resource_options=None, d
         default_includes,
         resource_options.includes,
     )
-    payload = DiscussionOutSchema.from_orm(discussion).dict()
+    payload = DiscussionOutSchema.model_validate(discussion).model_dump()
     payload.update(
         get_resource_registry().serialize(
             "discussion",
@@ -52,7 +52,7 @@ def serialize_discussion_list_payload(discussion, user=None, resource_options=No
         default_includes,
         resource_options.includes,
     )
-    payload = DiscussionOutSchema.from_orm(discussion).dict()
+    payload = DiscussionOutSchema.model_validate(discussion).model_dump()
     payload.update(
         get_resource_registry().serialize(
             "discussion",
