@@ -101,6 +101,13 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
                 "discussions.discussion.user_read",
             ],
         )
+        self.assertEqual(
+            {
+                getattr(event_type, "__module__", "")
+                for event_type in service["event_types"].values()
+            },
+            {"bias_content.backend.events"},
+        )
         for key in (
             "create",
             "update",
