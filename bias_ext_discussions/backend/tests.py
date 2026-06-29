@@ -574,7 +574,7 @@ class DiscussionApiTests(TestCase):
         lifecycle.apply_approved.return_value = {}
 
         with patch(
-            "bias_ext_discussions.backend.service_lifecycle.get_runtime_discussion_lifecycle_service",
+            "bias_content.backend.runtime._get_discussion_lifecycle_service",
             return_value=lifecycle,
         ):
             DiscussionService.approve_discussion(discussion, admin, note="ok")

@@ -79,13 +79,14 @@ def apply_discussion_resource_preloads(queryset, user=None, resource_options=Non
         default_includes,
         resource_options.includes,
     )
-    return get_resource_registry().apply_preload_plan(
+    planned = get_resource_registry().apply_preload_plan(
         queryset,
         "discussion",
         {"user": user, "include": includes},
         only=resource_options.fields,
         include=includes,
     )
+    return _filter_invalid_discussion_prefetches(planned)
 
 
 def apply_discussion_list_resource_preloads(queryset, user=None, resource_options=None, default_includes=()):
@@ -95,13 +96,34 @@ def apply_discussion_list_resource_preloads(queryset, user=None, resource_option
         default_includes,
         resource_options.includes,
     )
-    return get_resource_registry().apply_preload_plan(
+    planned = get_resource_registry().apply_preload_plan(
         queryset,
         "discussion",
         {"user": user, "include": includes, "defer_discussion_post_preload": True},
         only=resource_options.fields,
         include=includes,
     )
+    return _filter_invalid_discussion_prefetches(planned)
+
+
+def _filter_invalid_discussion_prefetches(queryset):
+    prefetches = tuple(getattr(queryset, "_prefetch_related_lookups", ()) or ())
+    if not prefetches:
+        return queryset
+    valid_prefetches = []
+    for item in prefetches:
+        lookup = getattr(item, "prefetch_through", item)
+        first_part = str(lookup or "").split("__", 1)[0]
+        if not first_part:
+            continue
+        try:
+            queryset.model._meta.get_field(first_part)
+        except Exception:
+            continue
+        valid_prefetches.append(item)
+    if len(valid_prefetches) == len(prefetches):
+        return queryset
+    return queryset.prefetch_related(None).prefetch_related(*valid_prefetches)
 
 
 def serialize_discussion_sort(definition):

@@ -45,6 +45,24 @@ def _get_user_counted_post_types() -> tuple[str, ...]:
     return _get_forum_registry().get_user_counted_post_type_codes()
 
 
+def _get_content_discussions_service():
+    return get_extension_host_service("content.discussions", None)
+
+
+def _content_discussions_method(name: str):
+    service = _get_content_discussions_service()
+    if isinstance(service, dict):
+        method = service.get(name)
+    else:
+        method = getattr(service, name, None)
+    return method if callable(method) else None
+
+
+def _reload_discussion_for_extension(discussion):
+    discussion_id = getattr(discussion, "id", discussion)
+    return Discussion.objects.get(id=discussion_id)
+
+
 class DiscussionService:
     """讨论服务"""
 
@@ -167,6 +185,16 @@ class DiscussionService:
         Returns:
             Discussion: 创建的讨论对象
         """
+        create = _content_discussions_method("create")
+        if create is not None:
+            return _reload_discussion_for_extension(create(
+                title=title,
+                content=content,
+                user=user,
+                extension_payload=extension_payload,
+                default_post_type=_get_default_post_type(),
+                runtime_model=Discussion,
+            ))
         return service_lifecycle.create_discussion(
             title,
             content,
@@ -392,6 +420,15 @@ class DiscussionService:
         *,
         require_view: bool = True,
     ) -> DiscussionUser:
+        mark_read = _content_discussions_method("mark_read")
+        if mark_read is not None:
+            mark_read(
+                discussion_id=discussion_id,
+                user=user,
+                last_read_post_number=last_read_post_number,
+                require_view=require_view,
+            )
+            return DiscussionUser.objects.get(discussion_id=discussion_id, user=user)
         return discussion_tracking.update_read_state(
             discussion_id,
             user,
@@ -401,6 +438,9 @@ class DiscussionService:
 
     @staticmethod
     def clamp_read_states(discussion_id: int, last_post_number: int | None = None) -> int:
+        clamp = _content_discussions_method("clamp_read_states")
+        if clamp is not None:
+            return clamp(discussion_id=discussion_id, last_post_number=last_post_number)
         return discussion_tracking.clamp_read_states(discussion_id, last_post_number)
 
     @staticmethod
@@ -410,6 +450,13 @@ class DiscussionService:
         user_id: int,
         last_read_post_number: int | None = None,
     ) -> bool:
+        follow = _content_discussions_method("follow_if_enabled")
+        if follow is not None:
+            return bool(follow(
+                discussion_id=discussion_id,
+                user_id=user_id,
+                last_read_post_number=last_read_post_number,
+            ))
         return discussion_tracking.follow_discussion(
             discussion_id=discussion_id,
             user_id=user_id,
@@ -418,6 +465,9 @@ class DiscussionService:
 
     @staticmethod
     def set_subscription(discussion_id: int, user: User, subscribed: bool) -> bool:
+        set_subscription = _content_discussions_method("set_subscription")
+        if set_subscription is not None:
+            return bool(set_subscription(discussion_id, user, subscribed))
         return discussion_tracking.set_subscription(discussion_id, user, subscribed)
 
     @staticmethod
@@ -448,6 +498,22 @@ class DiscussionService:
         Raises:
             PermissionDenied: 权限不足
         """
+        update = _content_discussions_method("update")
+        if update is not None:
+            return _reload_discussion_for_extension(update(
+                discussion_id,
+                user,
+                title=title,
+                content=content,
+                extension_payload=extension_payload,
+                is_locked=is_locked,
+                is_sticky=is_sticky,
+                is_hidden=is_hidden,
+                can_rename_discussion_cb=DiscussionService.can_rename_discussion,
+                can_edit_discussion_cb=DiscussionService.can_edit_discussion,
+                can_hide_discussion_cb=DiscussionService.can_hide_discussion,
+                runtime_model=Discussion,
+            ))
         return service_lifecycle.update_discussion(
             discussion_id,
             user,
@@ -470,6 +536,15 @@ class DiscussionService:
     def set_hidden_state(discussion: Discussion, user: User, is_hidden: bool) -> Discussion:
         if not DiscussionService.can_hide_discussion(discussion, user):
             raise PermissionDenied("没有权限隐藏/显示讨论")
+        set_hidden = _content_discussions_method("set_hidden_state")
+        if set_hidden is not None:
+            return _reload_discussion_for_extension(set_hidden(
+                discussion,
+                user,
+                is_hidden,
+                user_counted_post_types=_get_user_counted_post_types(),
+                runtime_model=Discussion,
+            ))
         return service_lifecycle.set_hidden_state(
             discussion,
             user,
@@ -479,6 +554,15 @@ class DiscussionService:
 
     @staticmethod
     def approve_discussion(discussion: Discussion, admin_user: User, note: str = "") -> Discussion:
+        approve = _content_discussions_method("approve")
+        if approve is not None:
+            return _reload_discussion_for_extension(approve(
+                discussion.id,
+                admin_user,
+                note=note,
+                user_counted_post_types=_get_user_counted_post_types(),
+                runtime_model=Discussion,
+            ))
         return service_lifecycle.approve_discussion(
             discussion,
             admin_user,
@@ -488,6 +572,15 @@ class DiscussionService:
 
     @staticmethod
     def reject_discussion(discussion: Discussion, admin_user: User, note: str = "") -> Discussion:
+        reject = _content_discussions_method("reject")
+        if reject is not None:
+            return _reload_discussion_for_extension(reject(
+                discussion.id,
+                admin_user,
+                note=note,
+                user_counted_post_types=_get_user_counted_post_types(),
+                runtime_model=Discussion,
+            ))
         return service_lifecycle.reject_discussion(
             discussion,
             admin_user,
@@ -517,6 +610,14 @@ class DiscussionService:
         Raises:
             PermissionDenied: 权限不足
         """
+        delete = _content_discussions_method("delete")
+        if delete is not None:
+            return bool(delete(
+                discussion_id,
+                user,
+                can_delete_discussion_cb=DiscussionService.can_delete_discussion,
+                user_counted_post_types=_get_user_counted_post_types(),
+            ))
         return service_lifecycle.delete_discussion(
             discussion_id,
             user,
