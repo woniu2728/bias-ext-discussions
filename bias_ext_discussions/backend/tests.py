@@ -313,6 +313,26 @@ class DiscussionApiTests(TestCase):
         event = next(item for item in events if item.__class__.__name__ == "DiscussionCreatedEvent")
         self.assertEqual(event.discussion_id, discussion.id)
 
+    def test_discussion_list_query_falls_back_to_title_search_without_search_extension(self):
+        matched = DiscussionService.create_discussion(
+            title="Fallback Needle Discussion",
+            content="Initial post",
+            user=self.author,
+        )
+        DiscussionService.create_discussion(
+            title="Other Discussion",
+            content="Initial post",
+            user=self.author,
+        )
+
+        discussions, total = DiscussionService.get_discussion_list(
+            q="Needle",
+            user=self.reader,
+        )
+
+        self.assertEqual(total, 1)
+        self.assertEqual([item.id for item in discussions], [matched.id])
+
     def test_create_discussion_applies_runtime_private_checkers(self):
         class RuntimeModelService:
             def is_private(self, model, instance, *, default=False):

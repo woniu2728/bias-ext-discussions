@@ -12,10 +12,9 @@ from bias_core.extensions.platform import get_extension_settings
 from bias_core.extensions.platform import get_forum_event_bus
 from bias_core.extensions.platform import evaluate_extension_policy
 from bias_core.extensions.runtime import (
-    apply_runtime_discussion_search,
     evaluate_runtime_model_policy,
+    get_extension_host_service,
     get_runtime_resource_registry,
-    get_runtime_search_service,
 )
 from bias_core.extensions.platform import get_forum_registry
 from bias_ext_discussions.backend import discussion_tracking, service_lifecycle
@@ -211,7 +210,7 @@ class DiscussionService:
 
         # 搜索
         if q:
-            queryset = apply_runtime_discussion_search(queryset, q, user=user)
+            queryset = _apply_optional_discussion_search(queryset, q, user=user)
 
         # 按作者过滤
         if author:
@@ -728,7 +727,7 @@ class DiscussionService:
 def _discussion_search_filter_tokens(query: str | None) -> tuple[tuple[Any, Any], ...]:
     if not _has_value(query):
         return ()
-    search_service = get_runtime_search_service()
+    search_service = get_extension_host_service("search")
     extractor = getattr(search_service, "extract_filter_tokens", None)
     if not callable(extractor):
         return ()
@@ -737,6 +736,21 @@ def _discussion_search_filter_tokens(query: str | None) -> tuple[tuple[Any, Any]
     except Exception:
         return ()
     return tuple(filters.get("discussion", ()) or ())
+
+
+def _apply_optional_discussion_search(queryset, query: str, *, user: Any = None):
+    search_service = get_extension_host_service("search.service")
+    applier = None
+    if isinstance(search_service, dict):
+        applier = search_service.get("apply_discussion_search")
+    else:
+        applier = getattr(search_service, "apply_discussion_search", None)
+    if callable(applier):
+        try:
+            return applier(queryset, query, user=user)
+        except Exception:
+            return queryset.filter(title__icontains=query)
+    return queryset.filter(title__icontains=query)
 
 
 def _has_value(value) -> bool:
