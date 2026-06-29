@@ -140,9 +140,9 @@ def _process_approval(*, content_id: int, action: str, actor, note: str = "") ->
 
 
 def _serialize_approval_item(discussion) -> dict:
-    from bias_core.extensions.runtime import get_runtime_first_post
+    from bias_ext_discussions.backend import content_posts
 
-    first_post = get_runtime_first_post(discussion)
+    first_post = content_posts.get_first_post(discussion)
     return {
         "type": "discussion",
         "id": discussion.id,
@@ -221,9 +221,9 @@ def _apply_counted_filter(queryset, *, prefix: str = ""):
 
 
 def _refresh_approved_stats(discussion, *, discussion_counted_post_types):
-    from bias_core.extensions.runtime import get_runtime_approved_discussion_post_stats
+    from bias_ext_discussions.backend import content_posts
 
-    stats = get_runtime_approved_discussion_post_stats(
+    stats = content_posts.get_approved_discussion_post_stats(
         discussion,
         discussion_counted_post_types=discussion_counted_post_types,
     )
@@ -246,14 +246,14 @@ def _refresh_approved_stats(discussion, *, discussion_counted_post_types):
 
 
 def _reply_notification_context(discussion_id: int, post_id: int, from_user):
-    from bias_core.extensions.runtime import get_runtime_discussion_post_number
+    from bias_ext_discussions.backend import content_posts
     from bias_ext_discussions.backend.models import Discussion, DiscussionUser
 
     try:
         discussion = Discussion.objects.select_related("user").get(id=discussion_id)
     except Discussion.DoesNotExist:
         return None
-    post_number = get_runtime_discussion_post_number(post_id)
+    post_number = content_posts.get_discussion_post_number(post_id)
     if post_number is None:
         return None
 

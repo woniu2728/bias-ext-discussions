@@ -6,8 +6,8 @@ from typing import Callable
 
 from django.utils import timezone
 
-from bias_core.extensions.runtime import create_runtime_post_event
 from bias_core.extensions.runtime import get_runtime_user_by_id
+from bias_ext_discussions.backend import content_posts
 from bias_ext_discussions.backend.models import Discussion
 
 
@@ -58,7 +58,7 @@ def create_timeline_event_post(
     except Exception:
         return None
 
-    event_post = create_runtime_post_event(
+    event_post = content_posts.create_post_event(
         discussion=discussion,
         actor=actor,
         post_type=post_type,

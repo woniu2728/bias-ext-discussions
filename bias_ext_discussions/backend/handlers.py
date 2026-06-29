@@ -5,10 +5,10 @@ from django.core.exceptions import PermissionDenied
 from bias_core.extensions.platform import api_error
 from bias_core.extensions.platform import log_admin_action
 from bias_core.extensions.runtime import get_runtime_resource_registry, has_runtime_forum_permission
-from bias_core.extensions.runtime import get_runtime_first_post, resolve_runtime_discussion_post_content_html
 from bias_core.extensions.platform import ResourceQueryOptions, merge_resource_includes, parse_resource_query_options
 from bias_core.extensions import ResourceEndpointDefinition
 from bias_core.extensions.platform import PaginationService
+from bias_ext_discussions.backend import content_posts
 from bias_ext_discussions.backend.models import Discussion
 from bias_core.extensions.runtime import serialize_runtime_user
 from bias_ext_discussions.backend.schemas import (
@@ -406,13 +406,13 @@ def dispatch_discussion_show(context):
 
     first_post = None
     if discussion.first_post_id:
-        post = get_runtime_first_post(discussion)
+        post = content_posts.get_first_post(discussion)
         if post is not None:
             first_post = {
                 "id": post.id,
                 "number": post.number,
                 "content": post.content,
-                "content_html": resolve_runtime_discussion_post_content_html(post),
+                "content_html": content_posts.resolve_discussion_post_content_html(post),
                 "user": serialize_runtime_user(post.user, resource="user_summary"),
                 "created_at": post.created_at,
                 "updated_at": post.updated_at,

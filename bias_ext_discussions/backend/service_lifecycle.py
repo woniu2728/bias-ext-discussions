@@ -16,19 +16,11 @@ from bias_ext_discussions.backend.events import (
     DiscussionStickyChangedEvent,
 )
 from bias_core.extensions.runtime import (
-    approve_runtime_first_post,
-    create_runtime_first_post,
-    delete_runtime_discussion_posts,
-    get_runtime_approved_reply_counts_by_author,
     get_runtime_discussion_lifecycle_service,
-    get_runtime_first_post,
-    get_runtime_post_lifecycle_service,
     get_runtime_resource_registry,
-    reject_runtime_first_post,
     refresh_runtime_model_private,
-    resubmit_runtime_first_post,
-    update_runtime_first_post_content,
 )
+from bias_ext_discussions.backend import content_posts
 from bias_ext_discussions.backend.models import Discussion, DiscussionUser
 from bias_core.extensions.runtime import (
     apply_runtime_user_comment_count_deltas,
@@ -95,28 +87,28 @@ def _apply_discussion_rejected_extensions(discussion_lifecycle, *, discussion, c
 
 
 def _apply_post_created_extensions(post, *, context: dict) -> dict:
-    post_lifecycle = get_runtime_post_lifecycle_service()
+    post_lifecycle = content_posts.get_post_lifecycle_service()
     if post_lifecycle is None:
         return {}
     return post_lifecycle.apply_created(post=post, context=context)
 
 
 def _apply_post_updated_extensions(post, *, context: dict) -> dict:
-    post_lifecycle = get_runtime_post_lifecycle_service()
+    post_lifecycle = content_posts.get_post_lifecycle_service()
     if post_lifecycle is None:
         return {}
     return post_lifecycle.apply_updated(post=post, context=context)
 
 
 def _apply_post_approved_extensions(post, *, context: dict) -> dict:
-    post_lifecycle = get_runtime_post_lifecycle_service()
+    post_lifecycle = content_posts.get_post_lifecycle_service()
     if post_lifecycle is None:
         return {}
     return post_lifecycle.apply_approved(post=post, context=context)
 
 
 def _apply_post_deleted_extensions(*, context: dict) -> dict:
-    post_lifecycle = get_runtime_post_lifecycle_service()
+    post_lifecycle = content_posts.get_post_lifecycle_service()
     if post_lifecycle is None:
         return {}
     return post_lifecycle.apply_deleted(context=context)
@@ -198,7 +190,7 @@ def create_discussion(
             approved_by=approved_by,
         )
 
-        first_post = create_runtime_first_post(
+        first_post = content_posts.create_first_post(
             discussion=discussion,
             user=user,
             content=content,
@@ -323,7 +315,7 @@ def update_discussion(
         first_post = None
 
         if content is not None:
-            first_post = update_runtime_first_post_content(
+            first_post = content_posts.update_first_post_content(
                 discussion,
                 content=content,
                 content_html=render_markdown_cb(content),
@@ -341,7 +333,7 @@ def update_discussion(
             actor_user_id=user.id,
         )
         if first_post is None and discussion.first_post_id:
-            first_post = get_runtime_first_post(discussion)
+            first_post = content_posts.get_first_post(discussion)
         _refresh_discussion_private_state(discussion, first_post=first_post)
         is_counted = (
             discussion.approval_status == Discussion.APPROVAL_APPROVED
@@ -399,9 +391,9 @@ def update_discussion(
             discussion.hidden_user = None
 
             if first_post is None:
-                first_post = resubmit_runtime_first_post(discussion)
+                first_post = content_posts.resubmit_first_post(discussion)
             else:
-                resubmit_runtime_first_post(discussion)
+                content_posts.resubmit_first_post(discussion)
             dispatch_forum_event_after_commit(
                 DiscussionResubmittedEvent(
                     discussion_id=discussion.id,
@@ -508,7 +500,7 @@ def approve_discussion(
             "is_private",
         ])
 
-        first_post = approve_runtime_first_post(
+        first_post = content_posts.approve_first_post(
             discussion,
             approved_at=discussion.approved_at,
             approved_by=admin_user,
@@ -587,7 +579,7 @@ def reject_discussion(
             "is_private",
         ])
 
-        reject_runtime_first_post(
+        content_posts.reject_first_post(
             discussion,
             rejected_at=rejected_at,
             rejected_by=admin_user,
@@ -628,7 +620,7 @@ def reject_discussion(
 
 
 def approved_reply_counts_by_author(discussion: Discussion, *, user_counted_post_types) -> dict:
-    return get_runtime_approved_reply_counts_by_author(
+    return content_posts.get_approved_reply_counts_by_author(
         discussion,
         user_counted_post_types=user_counted_post_types,
     )
@@ -663,7 +655,7 @@ def delete_discussion(
         if counted_discussion:
             approved_reply_counts = approved_reply_counts_by_author_cb(discussion)
 
-        deleted_posts = delete_runtime_discussion_posts(discussion)
+        deleted_posts = content_posts.delete_discussion_posts(discussion)
         for deleted_post in deleted_posts:
             _apply_post_deleted_extensions(
                 context={

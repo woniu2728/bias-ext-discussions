@@ -140,7 +140,7 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
             create=True,
             side_effect=AssertionError("discussion realtime should not use posts.service serialization"),
         ), patch(
-            "bias_ext_discussions.backend.realtime.serialize_runtime_realtime_post_by_id",
+            "bias_ext_discussions.backend.content_posts.serialize_realtime_post_by_id",
             return_value={"id": 42},
         ) as serialize_mock:
             payload = realtime.serialize_post_for_realtime(42)

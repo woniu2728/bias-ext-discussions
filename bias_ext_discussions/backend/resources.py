@@ -273,9 +273,9 @@ def _resolve_discussion_post_by_id(discussion, post_id: int | None, *, allow_que
 
 
 def _runtime_post_model():
-    from bias_core.extensions.runtime import get_runtime_post_model_or_none
+    from bias_ext_discussions.backend import content_posts
 
-    return get_runtime_post_model_or_none()
+    return content_posts.get_post_model_or_none()
 
 
 def _discussion_post_nested_includes(context: dict) -> set[str]:
