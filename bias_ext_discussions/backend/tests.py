@@ -188,6 +188,7 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
             "has_visibility": Mock(return_value=True),
             "validate_replyable": Mock(return_value="replyable"),
             "lock_for_post_number": Mock(return_value="locked"),
+            "apply_counted_filter": Mock(return_value="content-counted"),
             "refresh_approved_stats": Mock(return_value="stats"),
             "reply_notification_context": Mock(return_value={"reply": True}),
             "is_subscribed": Mock(return_value=True),
@@ -221,6 +222,7 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
             self.assertTrue(runtime._has_discussion_visibility(ability="view"))
             self.assertEqual(runtime._validate_replyable(5, user, discussion=discussion), "replyable")
             self.assertEqual(runtime._lock_for_post_number(5), "locked")
+            self.assertEqual(runtime._apply_counted_filter("queryset", prefix="discussion"), "content-counted")
             self.assertEqual(
                 runtime._refresh_approved_stats(
                     discussion,
@@ -254,6 +256,7 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
         content_service["has_visibility"].assert_called_once_with(ability="view")
         content_service["validate_replyable"].assert_called_once_with(5, user, discussion=discussion)
         content_service["lock_for_post_number"].assert_called_once_with(5)
+        content_service["apply_counted_filter"].assert_called_once_with("queryset", prefix="discussion")
         content_service["refresh_approved_stats"].assert_called_once_with(
             discussion,
             discussion_counted_post_types=("comment",),

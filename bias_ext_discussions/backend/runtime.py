@@ -283,6 +283,10 @@ def _lock_for_post_number(discussion_id: int):
 
 
 def _apply_counted_filter(queryset, *, prefix: str = ""):
+    content_method = _content_discussions_method("apply_counted_filter")
+    if content_method is not None:
+        return content_method(queryset, prefix=prefix)
+
     from bias_ext_discussions.backend.models import Discussion
 
     normalized_prefix = str(prefix or "").strip()
