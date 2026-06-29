@@ -92,22 +92,45 @@ class DiscussionService:
 
     @staticmethod
     def _viewer_cache_identity(user: Optional[User]) -> str:
+        content_discussions = _get_content_discussions_service()
+        if content_discussions is not None:
+            from bias_content.backend.runtime import viewer_cache_identity
+
+            return viewer_cache_identity(user)
         return discussion_tracking.viewer_cache_identity(user)
 
     @staticmethod
     def _view_count_cache_key(discussion_id: int, user: Optional[User]) -> str:
+        content_discussions = _get_content_discussions_service()
+        if content_discussions is not None:
+            from bias_content.backend.runtime import view_count_cache_key
+
+            return view_count_cache_key(discussion_id, user)
         return discussion_tracking.view_count_cache_key(discussion_id, user)
 
     @staticmethod
     def _view_count_pending_cache_key(discussion_id: int) -> str:
+        content_discussions = _get_content_discussions_service()
+        if content_discussions is not None:
+            from bias_content.backend.runtime import view_count_pending_cache_key
+
+            return view_count_pending_cache_key(discussion_id)
         return discussion_tracking.view_count_pending_cache_key(discussion_id)
 
     @staticmethod
     def _view_count_flush_lock_cache_key(discussion_id: int) -> str:
+        content_discussions = _get_content_discussions_service()
+        if content_discussions is not None:
+            from bias_content.backend.runtime import view_count_flush_lock_cache_key
+
+            return view_count_flush_lock_cache_key(discussion_id)
         return discussion_tracking.view_count_flush_lock_cache_key(discussion_id)
 
     @staticmethod
     def record_view(discussion: Discussion, user: Optional[User] = None) -> bool:
+        content_record_view = _content_discussions_method("record_view")
+        if content_record_view is not None:
+            return bool(content_record_view(discussion, user))
         return discussion_tracking.record_view(
             discussion,
             user=user,
@@ -119,6 +142,11 @@ class DiscussionService:
 
     @staticmethod
     def _increment_pending_view_count(discussion_id: int) -> int:
+        content_discussions = _get_content_discussions_service()
+        if content_discussions is not None:
+            from bias_content.backend.runtime import increment_pending_view_count
+
+            return increment_pending_view_count(discussion_id)
         return discussion_tracking.increment_pending_view_count(
             discussion_id,
             cache_timeout=DiscussionService.VIEW_COUNT_CACHE_TIMEOUT,
@@ -127,6 +155,11 @@ class DiscussionService:
 
     @staticmethod
     def _remember_pending_view_discussion(discussion_id: int) -> None:
+        content_discussions = _get_content_discussions_service()
+        if content_discussions is not None:
+            from bias_content.backend.runtime import remember_pending_view_discussion
+
+            return remember_pending_view_discussion(discussion_id)
         discussion_tracking.remember_pending_view_discussion(
             discussion_id,
             cache_timeout=DiscussionService.VIEW_COUNT_CACHE_TIMEOUT,
@@ -135,6 +168,11 @@ class DiscussionService:
 
     @staticmethod
     def dispatch_view_count_flush(discussion_id: int, pending_count: int = 0):
+        content_discussions = _get_content_discussions_service()
+        if content_discussions is not None:
+            from bias_content.backend.runtime import dispatch_view_count_flush
+
+            return dispatch_view_count_flush(discussion_id, pending_count=pending_count)
         return discussion_tracking.dispatch_view_count_flush(
             discussion_id,
             pending_count=pending_count,
@@ -144,6 +182,11 @@ class DiscussionService:
 
     @staticmethod
     def flush_pending_view_count(discussion_id: int) -> int:
+        content_discussions = _get_content_discussions_service()
+        if content_discussions is not None:
+            from bias_content.backend.runtime import flush_pending_view_count
+
+            return flush_pending_view_count(discussion_id)
         return discussion_tracking.flush_pending_view_count(
             discussion_id,
             cache_timeout=DiscussionService.VIEW_COUNT_CACHE_TIMEOUT,
@@ -152,6 +195,11 @@ class DiscussionService:
 
     @staticmethod
     def flush_all_pending_view_counts() -> int:
+        content_discussions = _get_content_discussions_service()
+        if content_discussions is not None:
+            from bias_content.backend.runtime import flush_all_pending_view_counts
+
+            return flush_all_pending_view_counts()
         return discussion_tracking.flush_all_pending_view_counts(
             cache_timeout=DiscussionService.VIEW_COUNT_CACHE_TIMEOUT,
             pending_ids_cache_key=DiscussionService.VIEW_COUNT_PENDING_IDS_CACHE_KEY,
@@ -229,6 +277,20 @@ class DiscussionService:
         Returns:
             Tuple[List[Discussion], int]: (讨论列表, 总数)
         """
+        content_list = _content_discussions_method("list")
+        if content_list is not None:
+            return content_list(
+                q=q,
+                author=author,
+                list_filter=list_filter,
+                sort=sort,
+                page=page,
+                limit=limit,
+                user=user,
+                preload=preload,
+                query_params=query_params,
+            )
+
         page, limit = PaginationService.normalize(page, limit)
         queryset = Discussion.objects.all()
         if preload is not None:
@@ -370,6 +432,15 @@ class DiscussionService:
         Returns:
             Optional[Discussion]: 讨论对象
         """
+        content_get_by_id = _content_discussions_method("get_by_id")
+        if content_get_by_id is not None:
+            return content_get_by_id(
+                discussion_id,
+                user,
+                preload=preload,
+                record_view=True,
+            )
+
         try:
             queryset = Discussion.objects.all()
             if preload is not None:

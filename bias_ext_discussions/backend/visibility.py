@@ -27,6 +27,7 @@ def apply_discussion_visibility_scope(queryset, user=None):
 
 def scope_discussion_view(queryset, context: dict):
     user = context.get("user")
+    model = queryset.model
     if not _can_view_forum(user, context):
         return queryset.none()
     base_q = _build_discussion_visibility_q(user=user, include_private=True, include_hidden=True)
@@ -35,7 +36,7 @@ def scope_discussion_view(queryset, context: dict):
 
     public_queryset = queryset.filter(base_q, is_private=False)
     private_queryset = _apply_private_visibility_branch(
-        Discussion,
+        model,
         queryset.filter(base_q, is_private=True),
         user=user,
     )
@@ -102,9 +103,10 @@ def _apply_discussion_hidden_visibility_branch(queryset, *, user=None):
     visible_queryset = queryset.filter(hidden_at__isnull=True)
     if user and getattr(user, "is_authenticated", False):
         visible_queryset = visible_queryset | queryset.filter(hidden_at__isnull=False, user=user)
-    if has_runtime_model_visibility(Discussion, ability="hide"):
+    model = queryset.model
+    if has_runtime_model_visibility(model, ability="hide"):
         visible_queryset = visible_queryset | apply_runtime_model_visibility(
-            Discussion,
+            model,
             queryset.filter(hidden_at__isnull=False),
             {"user": user, "ability": "hide"},
         )
@@ -117,9 +119,10 @@ def _apply_discussion_edit_posts_visibility_branch(queryset, *, user=None):
     visible_queryset = queryset.filter(comment_count__gt=0)
     if user and getattr(user, "is_authenticated", False):
         visible_queryset = visible_queryset | queryset.filter(user=user)
-    if has_runtime_model_visibility(Discussion, ability="editPosts"):
+    model = queryset.model
+    if has_runtime_model_visibility(model, ability="editPosts"):
         visible_queryset = visible_queryset | apply_runtime_model_visibility(
-            Discussion,
+            model,
             queryset.filter(comment_count__lte=0),
             {"user": user, "ability": "editPosts"},
         )

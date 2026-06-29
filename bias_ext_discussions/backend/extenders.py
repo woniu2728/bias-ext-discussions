@@ -10,6 +10,7 @@ from bias_core.extensions import (
     SearchIndexExtender,
     ServiceProviderExtender,
     SettingsExtender,
+    RuntimeModel,
 )
 
 from bias_ext_discussions.backend.admin_surface import permission_definitions
@@ -149,6 +150,10 @@ def model_extenders():
         _model_extender(),
         ModelVisibilityExtender().scope(
             Discussion,
+            scope_discussion_view,
+            description="限制当前用户只能查看有权限访问的讨论。",
+        ).scope(
+            RuntimeModel("content.discussions", description="content 基础包提供的讨论模型。"),
             scope_discussion_view,
             description="限制当前用户只能查看有权限访问的讨论。",
         ),

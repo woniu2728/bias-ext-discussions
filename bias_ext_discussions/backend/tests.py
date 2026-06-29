@@ -217,7 +217,7 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
         self.assertEqual(frontend_routes["discussion-create"]["component"], "./DiscussionCreateView.vue")
         self.assertTrue(frontend_routes["discussion-create"]["requires_auth"])
 
-    def test_inspect_reports_discussions_models_as_extension_owned(self):
+    def test_inspect_reports_discussions_wrapper_no_longer_owns_models(self):
         stdout = StringIO()
         call_command(
             "inspect_extensions",
@@ -230,16 +230,12 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
         audit = extension["model_ownership_audit"]
 
         self.assertEqual(extension["id"], "discussions")
-        self.assertEqual(audit["owned_model_count"], 2)
+        self.assertEqual(audit["owned_model_count"], 0)
         self.assertEqual(audit["app_label_migration_required_count"], 0)
         self.assertEqual(extension["django_app_label"], "discussions")
         self.assertEqual(audit["target_app_label"], "discussions")
         self.assertEqual(audit["target_app_label_source"], "manifest")
-        self.assertTrue(all(
-            item["target_app_label"] == "discussions"
-            and item["target_app_label_source"] == "manifest"
-            for item in audit["items"]
-        ))
+        self.assertEqual(audit["items"], [])
         self.assertEqual(extension["migration_plan"]["pending_files"], [])
 
     def test_discussions_extension_registers_discussion_sort_catalog(self):
@@ -957,7 +953,9 @@ class DiscussionApiTests(TestCase):
         self.assertLessEqual(len(select_group_queries), 2)
 
     def test_create_discussion_retries_on_transient_sqlite_lock(self):
-        original_create = Discussion.objects.create
+        from bias_content.backend.models import Discussion as ContentDiscussion
+
+        original_create = ContentDiscussion.objects.create
         state = {"failed": False}
 
         def flaky_create(*args, **kwargs):
@@ -967,7 +965,7 @@ class DiscussionApiTests(TestCase):
             return original_create(*args, **kwargs)
 
         with patch("bias_core.db.time.sleep", return_value=None):
-            with patch("bias_ext_discussions.backend.services.Discussion.objects.create", side_effect=flaky_create):
+            with patch("bias_content.backend.models.Discussion.objects.create", side_effect=flaky_create):
                 discussion = DiscussionService.create_discussion(
                     title="Retry discussion",
                     content="Retry body",
@@ -1328,7 +1326,7 @@ class DiscussionApiTests(TestCase):
 
     @override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "discussion-view-count-queue-test"}})
     def test_view_count_is_queued_when_queue_enabled(self):
-        from bias_ext_discussions.backend.tasks import flush_discussion_view_count_task
+        from bias_content.backend.tasks import flush_discussion_view_count_task
 
         cache.clear()
         discussion = DiscussionService.create_discussion(
@@ -1850,7 +1848,7 @@ class DiscussionApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.content)
         discussion.refresh_from_db()
-        renamed_post = Post.objects.get(discussion=discussion, number=2)
+        renamed_post = Post.objects.get(discussion_id=discussion.id, number=2)
         self.assertEqual(renamed_post.type, "discussionRenamed")
         self.assertEqual(renamed_post.content, "from: Original title\nto: Updated title")
         self.assertEqual(discussion.last_post_id, discussion.first_post_id)
@@ -1892,7 +1890,7 @@ class DiscussionApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         discussion.refresh_from_db()
         self.assertTrue(discussion.is_locked)
-        locked_post = Post.objects.get(discussion=discussion, number=2)
+        locked_post = Post.objects.get(discussion_id=discussion.id, number=2)
         self.assertEqual(locked_post.type, "discussionLocked")
         self.assertEqual(locked_post.content, "locked")
         self.assertEqual(discussion.last_post_id, discussion.first_post_id)
@@ -1952,7 +1950,7 @@ class DiscussionApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         discussion.refresh_from_db()
         self.assertTrue(discussion.is_locked)
-        locked_post = Post.objects.get(discussion=discussion, number=2)
+        locked_post = Post.objects.get(discussion_id=discussion.id, number=2)
         self.assertEqual(locked_post.type, "discussionLocked")
         self.assertEqual(locked_post.content, "locked")
 
@@ -1995,8 +1993,8 @@ class DiscussionApiTests(TestCase):
         discussion.refresh_from_db()
         self.assertEqual(discussion.title, "Updated locked title")
         self.assertTrue(discussion.is_locked)
-        self.assertTrue(Post.objects.filter(discussion=discussion, type="discussionRenamed").exists())
-        self.assertTrue(Post.objects.filter(discussion=discussion, type="discussionLocked").exists())
+        self.assertTrue(Post.objects.filter(discussion_id=discussion.id, type="discussionRenamed").exists())
+        self.assertTrue(Post.objects.filter(discussion_id=discussion.id, type="discussionLocked").exists())
 
     def test_sticky_discussion_creates_discussion_sticky_event_post(self):
         discussion = DiscussionService.create_discussion(
@@ -2019,7 +2017,7 @@ class DiscussionApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         discussion.refresh_from_db()
         self.assertTrue(discussion.is_sticky)
-        sticky_post = Post.objects.get(discussion=discussion, number=2)
+        sticky_post = Post.objects.get(discussion_id=discussion.id, number=2)
         self.assertEqual(sticky_post.type, "discussionSticky")
         self.assertEqual(sticky_post.content, "sticky")
         self.assertEqual(discussion.last_post_id, discussion.first_post_id)
@@ -2058,7 +2056,7 @@ class DiscussionApiTests(TestCase):
             )
 
         self.assertEqual(response.status_code, 200, response.content)
-        hidden_post = Post.objects.get(discussion=discussion, number=2)
+        hidden_post = Post.objects.get(discussion_id=discussion.id, number=2)
         self.assertEqual(hidden_post.type, "discussionHidden")
 
         hidden_detail = self.client.get(
