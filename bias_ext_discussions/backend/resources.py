@@ -8,12 +8,38 @@ from bias_core.extensions import ResourceDefinition, ResourceFieldDefinition, Re
 def discussion_resource_definitions():
     return (
         ResourceDefinition(
+            resource="discussion",
+            module_id="discussions",
+            resolver=serialize_discussion_base,
+            description="讨论基础资源。",
+        ),
+        ResourceDefinition(
             resource="search_discussion",
             module_id="discussions",
             resolver=serialize_search_discussion_base,
             description="搜索讨论结果资源。",
         ),
     )
+
+
+def serialize_discussion_base(discussion, context: dict) -> dict:
+    fields = _plain_discussion_fields(context)
+    if fields:
+        return {
+            field: getattr(discussion, field)
+            for field in fields
+            if hasattr(discussion, field)
+        }
+
+    from bias_ext_discussions.backend.schemas import DiscussionOutSchema
+
+    return DiscussionOutSchema.model_validate(discussion).model_dump()
+
+
+def _plain_discussion_fields(context: dict) -> tuple[str, ...]:
+    related_fields = context.get("plain_related_fields") or {}
+    fields = related_fields.get("discussion") if isinstance(related_fields, dict) else None
+    return tuple(str(field or "").strip() for field in fields or () if str(field or "").strip())
 
 
 def discussion_resource_field_definitions():
