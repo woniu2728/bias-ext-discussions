@@ -5,7 +5,7 @@ from collections import OrderedDict
 from django.contrib.auth.models import AnonymousUser
 
 from bias_core.extensions.platform import broadcast_realtime_discussion_event, iter_realtime_included_enrichers
-from bias_core.extensions.runtime import serialize_runtime_user
+from bias_core.extensions.runtime import get_extension_host_service, runtime_service_method, serialize_runtime_user
 from bias_ext_discussions.backend import content_posts
 
 
@@ -95,6 +95,9 @@ def load_discussion_for_realtime(discussion_id: int):
 
 
 def serialize_discussion_for_realtime(discussion):
+    content_discussions = get_extension_host_service("content.discussions", None)
+    if content_discussions is not None:
+        return runtime_service_method(content_discussions, "serialize")(discussion, user=None)
     from bias_ext_discussions.backend.handlers import serialize_discussion_payload
 
     return serialize_discussion_payload(discussion, user=None)

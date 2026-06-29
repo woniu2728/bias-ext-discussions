@@ -120,6 +120,8 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
             "follow_if_enabled",
             "mark_read",
             "clamp_read_states",
+            "serialize",
+            "serialize_by_id",
         ):
             self.assertTrue(callable(service[key]), key)
         self.assertTrue(callable(timeline_service["create_from_builder"]))
@@ -147,6 +149,24 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
 
         self.assertEqual(payload, {"id": 42})
         serialize_mock.assert_called_once_with(42, user=None)
+
+    def test_realtime_discussion_payload_uses_content_foundation_serializer(self):
+        from bias_ext_discussions.backend import realtime
+
+        discussion = Discussion(id=42, title="Realtime content discussion")
+        content_service = {"serialize": Mock(return_value={"id": 42, "title": "Realtime content discussion"})}
+
+        with patch(
+            "bias_ext_discussions.backend.realtime.get_extension_host_service",
+            return_value=content_service,
+        ), patch(
+            "bias_ext_discussions.backend.handlers.serialize_discussion_payload",
+            side_effect=AssertionError("discussion realtime should use content serializer"),
+        ):
+            payload = realtime.serialize_discussion_for_realtime(discussion)
+
+        self.assertEqual(payload, {"id": 42, "title": "Realtime content discussion"})
+        content_service["serialize"].assert_called_once_with(discussion, user=None)
 
     def test_content_post_boundary_uses_content_foundation_service(self):
         from bias_ext_discussions.backend import content_posts

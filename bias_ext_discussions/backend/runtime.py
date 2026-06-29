@@ -35,6 +35,8 @@ def discussion_service_provider() -> dict:
         "follow_if_enabled": DiscussionService.follow_discussion,
         "mark_read": _mark_read,
         "clamp_read_states": DiscussionService.clamp_read_states,
+        "serialize": _serialize_discussion,
+        "serialize_by_id": _serialize_discussion_by_id,
     }
 
 
@@ -86,6 +88,36 @@ def _count_pending_approvals() -> int:
     from bias_ext_discussions.backend.models import Discussion
 
     return Discussion.objects.filter(approval_status=Discussion.APPROVAL_PENDING).count()
+
+
+def _serialize_discussion(discussion, user=None, **kwargs):
+    from bias_core.extensions.runtime import get_extension_host_service, runtime_service_method
+
+    content_discussions = get_extension_host_service("content.discussions", None)
+    if content_discussions is not None:
+        return runtime_service_method(content_discussions, "serialize")(discussion, user=user, **kwargs)
+    from bias_ext_discussions.backend.handlers import serialize_discussion_payload
+
+    return serialize_discussion_payload(discussion, user=user)
+
+
+def _serialize_discussion_by_id(discussion_id: int, user=None, **kwargs):
+    from bias_core.extensions.runtime import get_extension_host_service, runtime_service_method
+
+    content_discussions = get_extension_host_service("content.discussions", None)
+    if content_discussions is not None:
+        return runtime_service_method(content_discussions, "serialize_by_id")(discussion_id, user=user, **kwargs)
+    from bias_ext_discussions.backend.handlers import apply_discussion_resource_preloads, serialize_discussion_payload
+    from bias_ext_discussions.backend.models import Discussion
+
+    discussion = (
+        apply_discussion_resource_preloads(Discussion.objects.all(), user=user)
+        .filter(id=discussion_id)
+        .first()
+    )
+    if discussion is None:
+        return None
+    return serialize_discussion_payload(discussion, user=user)
 
 
 def _pending_first_post_ids() -> list[int]:
