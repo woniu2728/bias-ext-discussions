@@ -155,3 +155,6 @@ include = ["bias_ext_discussions*"]
   "frontend/forum/components/DiscussionStickyPostItem.vue",
   "frontend/forum/components/PostHiddenPostItem.vue",
 ]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "bias_core.extension_test_settings"
