@@ -206,6 +206,12 @@ def service_extenders():
                 "update",
                 "validate_replyable",
             ),
+        ).service(
+            "discussions.timeline",
+            required_methods=("create_from_builder",),
+        ).service(
+            "realtime.discussion_broadcaster",
+            callable_service=True,
         ),
         LifecycleExtender(),
     )
