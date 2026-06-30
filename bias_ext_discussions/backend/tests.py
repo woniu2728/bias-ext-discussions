@@ -854,6 +854,44 @@ class DiscussionApiTests(TestCase):
         self.assertNotIn(denied.id, visible_ids)
         self.assertTrue(can_view_allowed)
 
+    def test_wildcard_scoper_does_not_enable_hidden_discussion_branch(self):
+        from bias_core.extensions import ExtensionModelVisibilityDefinition
+
+        hidden = Discussion.objects.create(
+            title="Wildcard hidden discussion",
+            slug="wildcard-hidden-discussion",
+            user=self.author,
+            hidden_at=timezone.now(),
+        )
+
+        app = ExtensionApplication()
+        app.models.register_visibility(
+            "discussions",
+            ExtensionModelVisibilityDefinition(
+                model=Discussion,
+                ability="view",
+                scope=scope_discussion_view,
+            ),
+        )
+        app.models.register_visibility(
+            "wildcard-runtime",
+            ExtensionModelVisibilityDefinition(
+                model=Discussion,
+                ability="*",
+                scope=lambda queryset, context: queryset,
+            ),
+        )
+
+        with patch("bias_core.extensions.runtime_models.get_runtime_model_service", return_value=app.models):
+            visible_ids = set(
+                DiscussionService.apply_visibility_filters(
+                    Discussion.objects.filter(id=hidden.id),
+                    self.reader,
+                ).values_list("id", flat=True)
+            )
+
+        self.assertNotIn(hidden.id, visible_ids)
+
     def test_approve_discussion_dispatches_event_after_commit(self):
         admin = User.objects.create_superuser(
             username="discussion-approver",
