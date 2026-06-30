@@ -764,7 +764,10 @@ class DiscussionService:
         if has_runtime_forum_permission(user, "discussion.edit"):
             allowed = True
         elif discussion.user_id == user.id:
-            allowed = has_runtime_forum_permission(user, "discussion.editOwn")
+            allowed = (
+                discussion.approval_status == Discussion.APPROVAL_REJECTED
+                or has_runtime_forum_permission(user, "discussion.editOwn")
+            )
         model_policy = evaluate_runtime_model_policy(
             "edit",
             user=user,
