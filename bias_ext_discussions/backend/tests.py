@@ -21,6 +21,7 @@ from bias_core.extensions.testing import (
     ExtensionRuntimeTestMixin,
     Setting,
     ResourceRegistry,
+    assert_runtime_service_contracts,
     capture_runtime_events,
     get_forum_registry,
 )
@@ -94,6 +95,13 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
         timeline_service = application.get_service("discussions.timeline")
         runtime_view = application.get_runtime_extension("discussions")
 
+        assert_runtime_service_contracts(
+            application,
+            "discussions",
+            "discussions.service",
+            "discussions.timeline",
+            "realtime.discussion_broadcaster",
+        )
         self.assertEqual(runtime_view.capabilities, ("discussion-api", "discussion-ui", "discussion_lifecycle"))
         self.assertIn("discussions.service", application.get_service_provider_keys(extension_id="discussions"))
         self.assertIn("discussions.timeline", application.get_service_provider_keys(extension_id="discussions"))
