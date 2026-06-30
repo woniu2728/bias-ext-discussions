@@ -39,7 +39,12 @@ def apply_unread_discussions_list_filter(queryset, context: dict):
     if not user or not getattr(user, "is_authenticated", False):
         return queryset.none()
 
-    return queryset.filter(last_post_number__gt=0).filter(
+    queryset = queryset.filter(last_post_number__gt=0)
+    marked_all_as_read_at = getattr(user, "marked_all_as_read_at", None)
+    if marked_all_as_read_at is not None:
+        queryset = queryset.filter(last_posted_at__gt=marked_all_as_read_at)
+
+    return queryset.filter(
         models.Q(user_states__user=user, last_post_number__gt=models.F("user_states__last_read_post_number"))
         | models.Q(user_states__user__isnull=True)
     )
