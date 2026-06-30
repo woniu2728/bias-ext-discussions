@@ -197,15 +197,15 @@ def _apply_visibility(queryset, user=None):
     return discussion_tracking.apply_visibility_filters(queryset, user)
 
 
-def _has_discussion_visibility(*, ability: str | None = None) -> bool:
+def _has_discussion_visibility(*, ability: str | None = None, exact: bool = False) -> bool:
     content_method = _content_discussions_method("has_visibility")
     if content_method is not None:
-        return bool(content_method(ability=ability))
+        return bool(content_method(ability=ability, exact=exact))
 
     from bias_core.extensions.runtime import has_runtime_model_visibility
     from bias_ext_discussions.backend.models import Discussion
 
-    return has_runtime_model_visibility(Discussion, ability=ability)
+    return has_runtime_model_visibility(Discussion, ability=ability, exact=exact)
 
 
 def _process_approval(*, content_id: int, action: str, actor, note: str = "") -> dict:

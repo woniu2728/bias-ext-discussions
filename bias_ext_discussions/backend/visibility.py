@@ -106,7 +106,7 @@ def _build_discussion_visibility_q(
 def _apply_private_visibility_branch(model, queryset, *, user=None):
     if can_view_runtime_model_private(model, user=user):
         return queryset
-    if not _has_exact_runtime_model_visibility(model, ability="viewPrivate"):
+    if not has_runtime_model_visibility(model, ability="viewPrivate", exact=True):
         return queryset.none()
     return apply_runtime_model_visibility(
         model,
@@ -122,7 +122,7 @@ def _apply_discussion_hidden_visibility_branch(queryset, *, user=None):
     if user and getattr(user, "is_authenticated", False):
         visible_queryset = visible_queryset | queryset.filter(hidden_at__isnull=False, user=user)
     model = queryset.model
-    if _has_exact_runtime_model_visibility(model, ability="hide"):
+    if has_runtime_model_visibility(model, ability="hide", exact=True):
         visible_queryset = visible_queryset | apply_runtime_model_visibility(
             model,
             queryset.filter(hidden_at__isnull=False),
@@ -138,7 +138,7 @@ def _apply_discussion_edit_posts_visibility_branch(queryset, *, user=None):
     if user and getattr(user, "is_authenticated", False):
         visible_queryset = visible_queryset | queryset.filter(user=user)
     model = queryset.model
-    if _has_exact_runtime_model_visibility(model, ability="editPosts"):
+    if has_runtime_model_visibility(model, ability="editPosts", exact=True):
         visible_queryset = visible_queryset | apply_runtime_model_visibility(
             model,
             queryset.filter(comment_count__lte=0),
@@ -153,26 +153,6 @@ def _view_branch_context(user, ability: str) -> dict:
         "ability": ability,
         "_discussion_visibility_parent_ability": "view",
     }
-
-
-def _has_exact_runtime_model_visibility(model, *, ability: str) -> bool:
-    try:
-        from bias_core.extensions.runtime import get_runtime_model_service
-
-        service = get_runtime_model_service()
-    except Exception:
-        service = None
-    if service is None or not hasattr(service, "get_visibility"):
-        return has_runtime_model_visibility(model, ability=ability)
-    requested_ability = str(ability or "view")
-    from bias_core.extensions.model_references import model_matches
-
-    host = getattr(service, "_host", None)
-    return any(
-        str(definition.ability or "*") == requested_ability
-        and model_matches(definition.model, model, host)
-        for definition in service.get_visibility()
-    )
 
 
 def _is_staff_user(user) -> bool:
