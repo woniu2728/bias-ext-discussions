@@ -681,8 +681,6 @@ def dispatch_discussion_toggle_pin(context):
     request = context["request"]
     user = context["user"]
     discussion_id = _discussion_object_id(context)
-    if not user.is_staff:
-        return api_error("需要管理员权限", status=403)
 
     try:
         discussion = Discussion.objects.get(id=discussion_id)
@@ -698,14 +696,14 @@ def dispatch_discussion_toggle_pin(context):
         return {"message": "操作成功", "is_sticky": discussion.is_sticky}
     except Discussion.DoesNotExist:
         return api_error("讨论不存在", status=404)
+    except PermissionDenied as e:
+        return api_error(str(e), status=403)
 
 
 def dispatch_discussion_toggle_lock(context):
     request = context["request"]
     user = context["user"]
     discussion_id = _discussion_object_id(context)
-    if not user.is_staff:
-        return api_error("需要管理员权限", status=403)
 
     try:
         discussion = Discussion.objects.get(id=discussion_id)
@@ -721,6 +719,8 @@ def dispatch_discussion_toggle_lock(context):
         return {"message": "操作成功", "is_locked": discussion.is_locked}
     except Discussion.DoesNotExist:
         return api_error("讨论不存在", status=404)
+    except PermissionDenied as e:
+        return api_error(str(e), status=403)
 
 
 def dispatch_discussion_toggle_hide(context):

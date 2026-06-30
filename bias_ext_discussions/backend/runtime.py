@@ -268,7 +268,7 @@ def _validate_replyable(discussion_id: int, user, *, discussion=None):
         return content_method(discussion_id, user, discussion=discussion)
 
     from django.core.exceptions import PermissionDenied
-    from bias_core.extensions.runtime import evaluate_runtime_model_policy
+    from bias_core.extensions.runtime import evaluate_runtime_model_policy, has_runtime_forum_permission
     from bias_ext_discussions.backend.models import Discussion
 
     if discussion is None:
@@ -277,10 +277,13 @@ def _validate_replyable(discussion_id: int, user, *, discussion=None):
         except Discussion.DoesNotExist:
             raise ValueError("讨论不存在")
 
-    if discussion.approval_status != Discussion.APPROVAL_APPROVED and not getattr(user, "is_staff", False):
+    if (
+        discussion.approval_status != Discussion.APPROVAL_APPROVED
+        and not has_runtime_forum_permission(user, ("discussion.lock", "discussion.sticky"))
+    ):
         raise ValueError("讨论正在审核中，暂时无法回复")
 
-    if discussion.is_locked and not getattr(user, "is_staff", False):
+    if discussion.is_locked and not has_runtime_forum_permission(user, "discussion.lock"):
         raise ValueError("讨论已锁定，无法回复")
 
     if evaluate_runtime_model_policy(

@@ -49,6 +49,12 @@ def ensure_runtime_forum_permission(*args, **kwargs):
     return runtime_ensure_forum_permission(*args, **kwargs)
 
 
+def has_runtime_forum_permission(*args, **kwargs):
+    from bias_core.extensions.runtime import has_runtime_forum_permission as runtime_has_forum_permission
+
+    return runtime_has_forum_permission(*args, **kwargs)
+
+
 def ensure_runtime_user_email_confirmed(*args, **kwargs):
     from bias_core.extensions.runtime import ensure_runtime_user_email_confirmed as runtime_ensure_user_email_confirmed
 
@@ -334,11 +340,7 @@ def update_discussion(
     if title is not None and title != discussion.title and not can_rename_discussion_cb(discussion, user):
         raise PermissionDenied("没有权限修改讨论标题")
 
-    edit_update_requested = any(
-        value is not None
-        for value in (content, is_locked, is_sticky)
-    )
-    if edit_update_requested and not can_edit_discussion_cb(discussion, user):
+    if content is not None and not can_edit_discussion_cb(discussion, user):
         raise PermissionDenied("没有权限编辑此讨论")
 
     if is_hidden is not None and not can_hide_discussion_cb(discussion, user):
@@ -413,12 +415,12 @@ def update_discussion(
                 )
 
         if is_locked is not None:
-            if not user.is_staff:
+            if not has_runtime_forum_permission(user, "discussion.lock"):
                 raise PermissionDenied("没有权限锁定/解锁讨论")
             set_locked_state_cb(discussion, user, is_locked)
 
         if is_sticky is not None:
-            if not user.is_staff:
+            if not has_runtime_forum_permission(user, "discussion.sticky"):
                 raise PermissionDenied("没有权限置顶/取消置顶讨论")
             set_sticky_state_cb(discussion, user, is_sticky)
 
@@ -739,7 +741,7 @@ def delete_discussion(
 
 
 def set_locked_state(discussion: Discussion, actor, is_locked: bool) -> Discussion:
-    if not actor.is_staff:
+    if not has_runtime_forum_permission(actor, "discussion.lock"):
         raise PermissionDenied("没有权限锁定/解锁讨论")
 
     if discussion.is_locked == is_locked:
@@ -759,7 +761,7 @@ def set_locked_state(discussion: Discussion, actor, is_locked: bool) -> Discussi
 
 
 def set_sticky_state(discussion: Discussion, actor, is_sticky: bool) -> Discussion:
-    if not actor.is_staff:
+    if not has_runtime_forum_permission(actor, "discussion.sticky"):
         raise PermissionDenied("没有权限置顶/取消置顶讨论")
 
     if discussion.is_sticky == is_sticky:

@@ -911,9 +911,12 @@ class DiscussionService:
             return False
         if not has_runtime_forum_permission(user, "discussion.reply"):
             return False
-        if discussion.approval_status != Discussion.APPROVAL_APPROVED and not user.is_staff:
+        if (
+            discussion.approval_status != Discussion.APPROVAL_APPROVED
+            and not has_runtime_forum_permission(user, ("discussion.lock", "discussion.sticky"))
+        ):
             return False
-        if discussion.is_locked and not user.is_staff:
+        if discussion.is_locked and not has_runtime_forum_permission(user, "discussion.lock"):
             return False
         if evaluate_runtime_model_policy(
             "reply",
