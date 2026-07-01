@@ -19,22 +19,65 @@ from bias_ext_discussions.backend.resources import attach_discussion_resource_po
 from bias_ext_discussions.backend.services import DiscussionService
 
 
+DISCUSSION_LIST_BASE_FIELDS = (
+    "id",
+    "title",
+    "slug",
+    "created_at",
+    "updated_at",
+    "last_posted_at",
+    "last_post_number",
+    "comment_count",
+    "participant_count",
+    "view_count",
+    "is_locked",
+    "is_sticky",
+    "is_hidden",
+    "approval_status",
+    "approval_note",
+    "is_subscribed",
+    "is_unread",
+    "unread_count",
+    "last_read_at",
+    "last_read_post_number",
+    "hidden_at",
+)
+
+
 def get_runtime_resource_registry(*args, **kwargs):
     from bias_core.extensions.runtime import get_runtime_resource_registry as runtime_get_resource_registry
 
     return runtime_get_resource_registry(*args, **kwargs)
 
 
-def has_runtime_forum_permission(*args, **kwargs):
-    from bias_core.extensions.runtime import has_runtime_forum_permission as runtime_has_forum_permission
+def get_runtime_service(service_key: str, default=None):
+    from bias_core.extensions.runtime import get_runtime_service as runtime_get_service
 
-    return runtime_has_forum_permission(*args, **kwargs)
+    return runtime_get_service(service_key, default)
 
 
-def serialize_runtime_user(*args, **kwargs):
-    from bias_core.extensions.runtime import serialize_runtime_user as runtime_serialize_user
+def _service_method(service, name: str):
+    if isinstance(service, dict):
+        method = service.get(name)
+    else:
+        method = getattr(service, name, None)
+    if not callable(method):
+        raise RuntimeError(f"Discussions 扩展运行时服务缺少方法: {name}")
+    return method
 
-    return runtime_serialize_user(*args, **kwargs)
+
+def has_forum_permission(user, permission_names) -> bool:
+    return bool(_service_method(get_runtime_service("users.service"), "has_forum_permission")(user, permission_names))
+
+
+def serialize_user(user, *, resource: str = "user_detail", context: dict | None = None):
+    if not user:
+        return None
+    return get_resource_registry().serialize(
+        str(resource or "user_detail"),
+        user,
+        context or {},
+    )
 
 
 def get_resource_registry():
@@ -70,26 +113,40 @@ def serialize_discussion_payload(
     return payload
 
 
-def serialize_discussion_list_payload(discussion, user=None, resource_options=None, default_includes=()):
+def serialize_discussion_list_payload(
+    discussion,
+    user=None,
+    resource_options=None,
+    default_includes=(),
+    resource_context=None,
+):
     resource_options = resource_options or ResourceQueryOptions()
     includes = merge_resource_includes(
         ("user", "last_posted_user"),
         default_includes,
         resource_options.includes,
     )
-    payload = DiscussionOutSchema.model_validate(discussion).model_dump()
+    payload = {
+        field: getattr(discussion, field)
+        for field in DISCUSSION_LIST_BASE_FIELDS
+        if hasattr(discussion, field)
+    }
+    resolved_context = {
+        "user": user,
+        "include": includes,
+        "require_prefetched_discussion_posts": True,
+        "plain_related_fields": {
+            "discussion": (),
+            "post": ("user",),
+        },
+    }
+    if resource_context:
+        resolved_context.update(resource_context)
     payload.update(
         get_resource_registry().serialize(
             "discussion",
             discussion,
-            {
-                "user": user,
-                "include": includes,
-                "require_prefetched_discussion_posts": True,
-                "plain_related_fields": {
-                    "post": ("user",),
-                },
-            },
+            resolved_context,
             only=resource_options.fields,
             include=includes,
         )
@@ -223,6 +280,10 @@ def _flatten_select_related(tree, prefix=""):
 
 
 def serialize_discussion_sort(definition):
+    list_resource_context = {
+        "_discussion_permission_results": {},
+        "discussion_tag_visibility_cache": {},
+    }
     return {
         "code": definition.code,
         "label": definition.label,
@@ -387,6 +448,17 @@ def _discussion_default_includes(context) -> tuple[str, ...]:
     return tuple(context.get("default_include") or ())
 
 
+def _discussion_index_default_includes(context, q: str | None = None) -> tuple[str, ...]:
+    default_includes = _discussion_default_includes(context)
+    if q:
+        return default_includes
+    return tuple(
+        item
+        for item in default_includes
+        if str(item or "").strip().split(".", 1)[0] != "most_relevant_post"
+    )
+
+
 def _discussion_payload(context) -> dict:
     payload = context.get("payload")
     return payload if isinstance(payload, dict) else {}
@@ -441,7 +513,7 @@ def dispatch_discussion_index(context):
         _discussion_query_value(context, "limit", 20),
     )
     resource_options = context.get("resource_options") or parse_resource_query_options(request, "discussion")
-    default_includes = _discussion_default_includes(context)
+    default_includes = _discussion_index_default_includes(context, q)
 
     discussions, total = DiscussionService.get_discussion_list(
         q=q,
@@ -473,6 +545,10 @@ def dispatch_discussion_index(context):
     )
     active_filter = DiscussionService.normalize_discussion_list_filter(filter_code)
     active_sort = DiscussionService.normalize_discussion_sort(sort)
+    list_resource_context = {
+        "_discussion_permission_results": {},
+        "discussion_tag_visibility_cache": {},
+    }
     return {
         "total": total,
         "page": page,
@@ -493,6 +569,7 @@ def dispatch_discussion_index(context):
                 user=user,
                 resource_options=resource_options,
                 default_includes=default_includes,
+                resource_context=list_resource_context,
             )
             for discussion in discussions
         ],
@@ -535,7 +612,7 @@ def dispatch_discussion_show(context):
                 "number": post.number,
                 "content": post.content,
                 "content_html": content_posts.resolve_discussion_post_content_html(post),
-                "user": serialize_runtime_user(post.user, resource="user_summary"),
+                "user": serialize_user(post.user, resource="user_summary"),
                 "created_at": post.created_at,
                 "updated_at": post.updated_at,
                 "approval_status": post.approval_status,
@@ -733,7 +810,7 @@ def dispatch_discussion_toggle_hide(context):
         next_hidden = not discussion.is_hidden
         DiscussionService.set_hidden_state(discussion, user, next_hidden)
         discussion.refresh_from_db()
-        if has_runtime_forum_permission(user, "discussion.hide"):
+        if has_forum_permission(user, "discussion.hide"):
             log_admin_action(
                 request,
                 "admin.discussion.hide" if discussion.is_hidden else "admin.discussion.restore",

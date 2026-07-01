@@ -2,18 +2,11 @@ from __future__ import annotations
 
 from bias_core.extensions import (
     DiscussionListFilterDefinition,
-    DiscussionSortDefinition,
     PostTypeDefinition,
 )
 
 from bias_ext_discussions.backend.constants import EXTENSION_ID
 from bias_ext_discussions.backend.registry import (
-    apply_all_discussion_list_filter,
-    apply_discussion_latest_sort,
-    apply_discussion_newest_sort,
-    apply_discussion_oldest_sort,
-    apply_discussion_top_sort,
-    apply_discussion_unanswered_sort,
     apply_my_discussions_list_filter,
     apply_unread_discussions_list_filter,
 )
@@ -72,75 +65,8 @@ def post_type_definitions():
     )
 
 
-def discussion_sort_definitions():
-    return (
-        DiscussionSortDefinition(
-            code="latest",
-            label="最新活跃",
-            module_id=EXTENSION_ID,
-            applier=apply_discussion_latest_sort,
-            description="按最后活跃时间排序，优先展示最近有新回复的讨论。",
-            icon="fas fa-clock",
-            is_default=True,
-            order=10,
-            toolbar_visible=True,
-        ),
-        DiscussionSortDefinition(
-            code="newest",
-            label="新主题",
-            module_id=EXTENSION_ID,
-            applier=apply_discussion_newest_sort,
-            description="按讨论创建时间倒序，优先展示最新发布的主题。",
-            icon="fas fa-file-alt",
-            order=20,
-            toolbar_visible=True,
-        ),
-        DiscussionSortDefinition(
-            code="top",
-            label="热门",
-            module_id=EXTENSION_ID,
-            applier=apply_discussion_top_sort,
-            description="按回复数和浏览量综合排序，优先展示热门讨论。",
-            icon="fas fa-fire",
-            order=30,
-            toolbar_visible=True,
-        ),
-        DiscussionSortDefinition(
-            code="unanswered",
-            label="零回复",
-            module_id=EXTENSION_ID,
-            applier=apply_discussion_unanswered_sort,
-            description="优先展示还没有收到其他回复的讨论，便于发现待回应主题。",
-            icon="fas fa-comment-slash",
-            order=40,
-            toolbar_visible=False,
-        ),
-        DiscussionSortDefinition(
-            code="oldest",
-            label="最早发布",
-            module_id=EXTENSION_ID,
-            applier=apply_discussion_oldest_sort,
-            description="按讨论创建时间正序排序。",
-            icon="fas fa-hourglass-start",
-            order=50,
-            toolbar_visible=False,
-        ),
-    )
-
-
 def discussion_list_filter_definitions():
     return (
-        DiscussionListFilterDefinition(
-            code="all",
-            label="全部讨论",
-            module_id=EXTENSION_ID,
-            applier=apply_all_discussion_list_filter,
-            description="显示当前可见的全部讨论。",
-            icon="far fa-comments",
-            is_default=True,
-            order=10,
-            route_path="/",
-        ),
         DiscussionListFilterDefinition(
             code="my",
             label="我发起的",

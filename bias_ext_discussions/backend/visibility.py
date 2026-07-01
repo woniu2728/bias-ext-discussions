@@ -18,10 +18,20 @@ def can_view_runtime_model_private(*args, **kwargs):
     return runtime_can_view_model_private(*args, **kwargs)
 
 
-def has_runtime_forum_permission(*args, **kwargs):
-    from bias_core.extensions.runtime import has_runtime_forum_permission as runtime_has_forum_permission
+def get_runtime_service(service_key: str, default=None):
+    from bias_core.extensions.runtime import get_runtime_service as runtime_get_service
 
-    return runtime_has_forum_permission(*args, **kwargs)
+    return runtime_get_service(service_key, default)
+
+
+def _service_method(service, name: str):
+    if isinstance(service, dict):
+        method = service.get(name)
+    else:
+        method = getattr(service, name, None)
+    if not callable(method):
+        raise RuntimeError(f"Discussions 扩展运行时服务缺少方法: {name}")
+    return method
 
 
 def has_runtime_model_visibility(*args, **kwargs):
@@ -160,7 +170,7 @@ def _is_staff_user(user) -> bool:
 
 
 def _has_forum_permission(user, permission_names) -> bool:
-    return has_runtime_forum_permission(user, permission_names)
+    return bool(_service_method(get_runtime_service("users.service"), "has_forum_permission")(user, permission_names))
 
 
 def _can_view_forum(user, context: dict | None = None) -> bool:

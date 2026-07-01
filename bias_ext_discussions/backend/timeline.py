@@ -10,10 +10,24 @@ from bias_ext_discussions.backend import content_posts
 from bias_ext_discussions.backend.models import Discussion
 
 
-def get_runtime_user_by_id(*args, **kwargs):
-    from bias_core.extensions.runtime import get_runtime_user_by_id as runtime_get_user_by_id
+def get_runtime_service(service_key: str, default=None):
+    from bias_core.extensions.runtime import get_runtime_service as runtime_get_service
 
-    return runtime_get_user_by_id(*args, **kwargs)
+    return runtime_get_service(service_key, default)
+
+
+def _service_method(service, name: str):
+    if isinstance(service, dict):
+        method = service.get(name)
+    else:
+        method = getattr(service, name, None)
+    if not callable(method):
+        raise RuntimeError(f"Discussions 扩展运行时服务缺少方法: {name}")
+    return method
+
+
+def get_user_by_id(*args, **kwargs):
+    return _service_method(get_runtime_service("users.service"), "get_by_id")(*args, **kwargs)
 
 
 TimelineContentBuilder = Callable[[object], tuple[str, str] | None]
@@ -64,7 +78,7 @@ def create_timeline_event_post(
     merge_strategy: str = "",
 ) -> object | None:
     try:
-        actor = get_runtime_user_by_id(actor_user_id)
+        actor = get_user_by_id(actor_user_id)
         discussion = Discussion.objects.get(id=discussion_id)
     except Discussion.DoesNotExist:
         return None

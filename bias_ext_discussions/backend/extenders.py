@@ -23,7 +23,6 @@ from bias_ext_discussions.backend.events import (
 )
 from bias_ext_discussions.backend.forum_contracts import (
     discussion_list_filter_definitions,
-    discussion_sort_definitions,
     post_type_definitions,
 )
 from bias_ext_discussions.backend.frontend import frontend_extender
@@ -75,7 +74,6 @@ def forum_extenders():
     return (
         ForumCapabilitiesExtender(
             post_types=post_type_definitions(),
-            discussion_sorts=discussion_sort_definitions(),
             discussion_list_filters=discussion_list_filter_definitions(),
         ),
     )

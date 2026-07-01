@@ -37,46 +37,48 @@ def refresh_runtime_model_private(*args, **kwargs):
     return runtime_refresh_model_private(*args, **kwargs)
 
 
-def apply_runtime_user_comment_count_deltas(*args, **kwargs):
-    from bias_core.extensions.runtime import apply_runtime_user_comment_count_deltas as runtime_apply_user_comment_count_deltas
+def get_runtime_service(service_key: str, default=None):
+    from bias_core.extensions.runtime import get_runtime_service as runtime_get_service
 
-    return runtime_apply_user_comment_count_deltas(*args, **kwargs)
-
-
-def ensure_runtime_forum_permission(*args, **kwargs):
-    from bias_core.extensions.runtime import ensure_runtime_forum_permission as runtime_ensure_forum_permission
-
-    return runtime_ensure_forum_permission(*args, **kwargs)
+    return runtime_get_service(service_key, default)
 
 
-def has_runtime_forum_permission(*args, **kwargs):
-    from bias_core.extensions.runtime import has_runtime_forum_permission as runtime_has_forum_permission
-
-    return runtime_has_forum_permission(*args, **kwargs)
-
-
-def ensure_runtime_user_email_confirmed(*args, **kwargs):
-    from bias_core.extensions.runtime import ensure_runtime_user_email_confirmed as runtime_ensure_user_email_confirmed
-
-    return runtime_ensure_user_email_confirmed(*args, **kwargs)
+def _service_method(service, name: str):
+    if isinstance(service, dict):
+        method = service.get(name)
+    else:
+        method = getattr(service, name, None)
+    if not callable(method):
+        raise RuntimeError(f"Discussions 扩展运行时服务缺少方法: {name}")
+    return method
 
 
-def ensure_runtime_user_not_suspended(*args, **kwargs):
-    from bias_core.extensions.runtime import ensure_runtime_user_not_suspended as runtime_ensure_user_not_suspended
-
-    return runtime_ensure_user_not_suspended(*args, **kwargs)
+def apply_user_comment_count_deltas(*args, **kwargs):
+    return _service_method(get_runtime_service("users.service"), "apply_comment_count_deltas")(*args, **kwargs)
 
 
-def increment_runtime_user_discussion_count(*args, **kwargs):
-    from bias_core.extensions.runtime import increment_runtime_user_discussion_count as runtime_increment_user_discussion_count
-
-    return runtime_increment_user_discussion_count(*args, **kwargs)
+def ensure_forum_permission(*args, **kwargs):
+    return _service_method(get_runtime_service("users.service"), "ensure_forum_permission")(*args, **kwargs)
 
 
-def requires_runtime_content_approval(*args, **kwargs):
-    from bias_core.extensions.runtime import requires_runtime_content_approval as runtime_requires_content_approval
+def has_forum_permission(user, permission_names) -> bool:
+    return bool(_service_method(get_runtime_service("users.service"), "has_forum_permission")(user, permission_names))
 
-    return runtime_requires_content_approval(*args, **kwargs)
+
+def ensure_user_email_confirmed(*args, **kwargs):
+    return _service_method(get_runtime_service("users.service"), "ensure_email_confirmed")(*args, **kwargs)
+
+
+def ensure_user_not_suspended(*args, **kwargs):
+    return _service_method(get_runtime_service("users.service"), "ensure_not_suspended")(*args, **kwargs)
+
+
+def increment_user_discussion_count(*args, **kwargs):
+    return _service_method(get_runtime_service("users.service"), "increment_discussion_count")(*args, **kwargs)
+
+
+def requires_content_approval(*args, **kwargs):
+    return _service_method(get_runtime_service("users.service"), "requires_content_approval")(*args, **kwargs)
 
 
 def _prepare_discussion_create_extensions(discussion_lifecycle, *, user, payload: dict) -> dict:
@@ -218,10 +220,10 @@ def create_discussion(
     default_post_type,
     render_markdown_cb,
 ) -> Discussion:
-    ensure_runtime_user_not_suspended(user, "发布讨论")
-    ensure_runtime_user_email_confirmed(user, "发布讨论")
-    ensure_runtime_forum_permission(user, "startDiscussion", "没有权限发起讨论")
-    requires_approval = requires_runtime_content_approval(user, "startDiscussionWithoutApproval")
+    ensure_user_not_suspended(user, "发布讨论")
+    ensure_user_email_confirmed(user, "发布讨论")
+    ensure_forum_permission(user, "startDiscussion", "没有权限发起讨论")
+    requires_approval = requires_content_approval(user, "startDiscussionWithoutApproval")
     approval_status = Discussion.APPROVAL_PENDING if requires_approval else Discussion.APPROVAL_APPROVED
     approved_at = None if requires_approval else timezone.now()
     approved_by = None if requires_approval else user
@@ -296,7 +298,7 @@ def create_discussion(
                     "is_approved": True,
                 },
             )
-            increment_runtime_user_discussion_count(user.id, 1)
+            increment_user_discussion_count(user.id, 1)
 
         DiscussionUser.objects.create(
             discussion=discussion,
@@ -334,7 +336,7 @@ def update_discussion(
     set_sticky_state_cb,
     set_hidden_state_cb,
 ) -> Discussion:
-    ensure_runtime_user_not_suspended(user, "编辑讨论")
+    ensure_user_not_suspended(user, "编辑讨论")
     discussion = Discussion.objects.get(id=discussion_id)
 
     if title is not None and title != discussion.title and not can_rename_discussion_cb(discussion, user):
@@ -415,12 +417,12 @@ def update_discussion(
                 )
 
         if is_locked is not None:
-            if not has_runtime_forum_permission(user, "discussion.lock"):
+            if not has_forum_permission(user, "discussion.lock"):
                 raise PermissionDenied("没有权限锁定/解锁讨论")
             set_locked_state_cb(discussion, user, is_locked)
 
         if is_sticky is not None:
-            if not has_runtime_forum_permission(user, "discussion.sticky"):
+            if not has_forum_permission(user, "discussion.sticky"):
                 raise PermissionDenied("没有权限置顶/取消置顶讨论")
             set_sticky_state_cb(discussion, user, is_sticky)
 
@@ -494,8 +496,8 @@ def set_hidden_state(
             discussion_delta = -1 if is_hidden else 1
             reply_delta = -1 if is_hidden else 1
             if discussion.user:
-                increment_runtime_user_discussion_count(discussion.user_id, discussion_delta)
-            apply_runtime_user_comment_count_deltas({
+                increment_user_discussion_count(discussion.user_id, discussion_delta)
+            apply_user_comment_count_deltas({
                 user_id: reply_delta * total
                 for user_id, total in approved_reply_counts.items()
             })
@@ -559,8 +561,8 @@ def approve_discussion(
 
         if not was_counted:
             if discussion.user:
-                increment_runtime_user_discussion_count(discussion.user_id, 1)
-            apply_runtime_user_comment_count_deltas(approved_reply_counts)
+                increment_user_discussion_count(discussion.user_id, 1)
+            apply_user_comment_count_deltas(approved_reply_counts)
             if first_post is not None:
                 _apply_post_approved_extensions(
                     first_post,
@@ -638,8 +640,8 @@ def reject_discussion(
 
         if was_counted:
             if discussion.user:
-                increment_runtime_user_discussion_count(discussion.user_id, -1)
-            apply_runtime_user_comment_count_deltas({
+                increment_user_discussion_count(discussion.user_id, -1)
+            apply_user_comment_count_deltas({
                 user_id: -total
                 for user_id, total in approved_reply_counts.items()
             })
@@ -683,7 +685,7 @@ def delete_discussion(
     can_delete_discussion_cb,
     approved_reply_counts_by_author_cb,
 ) -> bool:
-    ensure_runtime_user_not_suspended(user, "删除讨论")
+    ensure_user_not_suspended(user, "删除讨论")
     discussion = Discussion.objects.get(id=discussion_id)
 
     if not can_delete_discussion_cb(discussion, user):
@@ -730,9 +732,9 @@ def delete_discussion(
         )
 
         if counted_discussion and discussion.user:
-            increment_runtime_user_discussion_count(discussion.user_id, -1)
+            increment_user_discussion_count(discussion.user_id, -1)
 
-        apply_runtime_user_comment_count_deltas({
+        apply_user_comment_count_deltas({
             user_id: -total
             for user_id, total in approved_reply_counts.items()
         })
@@ -741,7 +743,7 @@ def delete_discussion(
 
 
 def set_locked_state(discussion: Discussion, actor, is_locked: bool) -> Discussion:
-    if not has_runtime_forum_permission(actor, "discussion.lock"):
+    if not has_forum_permission(actor, "discussion.lock"):
         raise PermissionDenied("没有权限锁定/解锁讨论")
 
     if discussion.is_locked == is_locked:
@@ -761,7 +763,7 @@ def set_locked_state(discussion: Discussion, actor, is_locked: bool) -> Discussi
 
 
 def set_sticky_state(discussion: Discussion, actor, is_sticky: bool) -> Discussion:
-    if not has_runtime_forum_permission(actor, "discussion.sticky"):
+    if not has_forum_permission(actor, "discussion.sticky"):
         raise PermissionDenied("没有权限置顶/取消置顶讨论")
 
     if discussion.is_sticky == is_sticky:

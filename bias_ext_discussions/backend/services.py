@@ -39,10 +39,24 @@ def get_runtime_resource_registry(*args, **kwargs):
     return runtime_get_resource_registry(*args, **kwargs)
 
 
-def has_runtime_forum_permission(*args, **kwargs):
-    from bias_core.extensions.runtime import has_runtime_forum_permission as runtime_has_forum_permission
+def get_runtime_service(service_key: str, default=None):
+    from bias_core.extensions.runtime import get_runtime_service as runtime_get_service
 
-    return runtime_has_forum_permission(*args, **kwargs)
+    return runtime_get_service(service_key, default)
+
+
+def _service_method(service, name: str):
+    if isinstance(service, dict):
+        method = service.get(name)
+    else:
+        method = getattr(service, name, None)
+    if not callable(method):
+        raise RuntimeError(f"Discussions 扩展运行时服务缺少方法: {name}")
+    return method
+
+
+def has_forum_permission(user, permission_names) -> bool:
+    return bool(_service_method(get_runtime_service("users.service"), "has_forum_permission")(user, permission_names))
 
 
 def _get_forum_registry():
@@ -761,12 +775,12 @@ class DiscussionService:
         if user.is_suspended:
             return False
         allowed = False
-        if has_runtime_forum_permission(user, "discussion.edit"):
+        if has_forum_permission(user, "discussion.edit"):
             allowed = True
         elif discussion.user_id == user.id:
             allowed = (
                 discussion.approval_status == Discussion.APPROVAL_REJECTED
-                or has_runtime_forum_permission(user, "discussion.editOwn")
+                or has_forum_permission(user, "discussion.editOwn")
             )
         model_policy = evaluate_runtime_model_policy(
             "edit",
@@ -793,11 +807,11 @@ class DiscussionService:
         if user.is_suspended:
             return False
         allowed = False
-        if has_runtime_forum_permission(user, "discussion.rename"):
+        if has_forum_permission(user, "discussion.rename"):
             allowed = True
         elif discussion.user_id == user.id:
             allowed = (
-                has_runtime_forum_permission(user, "discussion.reply")
+                has_forum_permission(user, "discussion.reply")
                 and DiscussionService._author_can_rename_discussion(discussion)
             )
         model_policy = evaluate_runtime_model_policy(
@@ -825,11 +839,11 @@ class DiscussionService:
         if user.is_suspended:
             return False
         allowed = False
-        if has_runtime_forum_permission(user, "discussion.hide"):
+        if has_forum_permission(user, "discussion.hide"):
             allowed = True
         elif discussion.user_id == user.id:
             allowed = (
-                has_runtime_forum_permission(user, "discussion.reply")
+                has_forum_permission(user, "discussion.reply")
                 and DiscussionService._author_can_hide_discussion(discussion, user)
             )
         model_policy = evaluate_runtime_model_policy(
@@ -884,10 +898,10 @@ class DiscussionService:
         if user.is_suspended:
             return False
         allowed = False
-        if has_runtime_forum_permission(user, "discussion.delete"):
+        if has_forum_permission(user, "discussion.delete"):
             allowed = True
         elif discussion.user_id == user.id:
-            allowed = has_runtime_forum_permission(user, "discussion.deleteOwn")
+            allowed = has_forum_permission(user, "discussion.deleteOwn")
         model_policy = evaluate_runtime_model_policy(
             "delete",
             user=user,
@@ -912,14 +926,14 @@ class DiscussionService:
             return False
         if user.is_suspended:
             return False
-        if not has_runtime_forum_permission(user, "discussion.reply"):
+        if not has_forum_permission(user, "discussion.reply"):
             return False
         if (
             discussion.approval_status != Discussion.APPROVAL_APPROVED
-            and not has_runtime_forum_permission(user, ("discussion.lock", "discussion.sticky"))
+            and not has_forum_permission(user, ("discussion.lock", "discussion.sticky"))
         ):
             return False
-        if discussion.is_locked and not has_runtime_forum_permission(user, "discussion.lock"):
+        if discussion.is_locked and not has_forum_permission(user, "discussion.lock"):
             return False
         if evaluate_runtime_model_policy(
             "reply",

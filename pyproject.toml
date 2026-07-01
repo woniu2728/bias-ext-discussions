@@ -3,7 +3,11 @@ name = "bias-ext-discussions"
 version = "0.1.0"
 description = "Bias Discussions Extension"
 requires-python = ">=3.11"
-dependencies = ["bias-core>=0.1,<0.2"]
+dependencies = [
+  "bias-core>=0.1,<0.2",
+  "bias-ext-users>=0.1,<0.2",
+  "bias-content>=0.1,<0.2",
+]
 
 [project.entry-points."bias.extensions"]
 discussions = "bias_ext_discussions.backend.ext:extend"
@@ -156,5 +160,5 @@ include = ["bias_ext_discussions*"]
   "frontend/forum/components/PostHiddenPostItem.vue",
 ]
 
-[tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "bias_core.extension_test_settings"
+[tool.pytest."ini_options"]
+"DJANGO_SETTINGS_MODULE" = "bias_core.extension_test_settings"

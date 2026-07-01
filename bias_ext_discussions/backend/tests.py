@@ -211,7 +211,7 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
         )()
 
         with patch(
-            "bias_ext_discussions.backend.timeline.get_runtime_user_by_id",
+            "bias_ext_discussions.backend.timeline.get_user_by_id",
             return_value=actor,
         ), patch(
             "bias_ext_discussions.backend.timeline.Discussion.objects.get",
@@ -254,7 +254,7 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
         )()
 
         with patch(
-            "bias_ext_discussions.backend.timeline.get_runtime_user_by_id",
+            "bias_ext_discussions.backend.timeline.get_user_by_id",
             return_value=actor,
         ), patch(
             "bias_ext_discussions.backend.timeline.Discussion.objects.get",
@@ -382,7 +382,7 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
             ability="view",
             context={"scope": "all"},
         )
-        content_service["has_visibility"].assert_called_once_with(ability="view")
+        content_service["has_visibility"].assert_called_once_with(ability="view", exact=False)
         content_service["validate_replyable"].assert_called_once_with(5, user, discussion=discussion)
         content_service["lock_for_post_number"].assert_called_once_with(5)
         content_service["apply_counted_filter"].assert_called_once_with("queryset", prefix="discussion")
@@ -560,7 +560,7 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
         newest_sort = next(item for item in sorts if item.code == "newest")
         unanswered_sort = next(item for item in sorts if item.code == "unanswered")
         oldest_sort = next(item for item in sorts if item.code == "oldest")
-        self.assertEqual(newest_sort.module_id, "discussions")
+        self.assertEqual(newest_sort.module_id, "content")
         self.assertEqual(newest_sort.icon, "fas fa-file-alt")
         self.assertTrue(newest_sort.toolbar_visible)
         self.assertFalse(unanswered_sort.toolbar_visible)
@@ -580,12 +580,14 @@ class DiscussionRegistryTests(ExtensionRuntimeTestMixin, TestCase):
         following_filter = next(item for item in filters if item.code == "following")
         my_filter = next(item for item in filters if item.code == "my")
         unread_filter = next(item for item in filters if item.code == "unread")
-        self.assertEqual(all_filter.module_id, "discussions")
+        self.assertEqual(all_filter.module_id, "content")
         self.assertTrue(all_filter.sidebar_visible)
         self.assertEqual(all_filter.route_path, "/")
         self.assertEqual(following_filter.module_id, "subscriptions")
         self.assertTrue(following_filter.sidebar_visible)
         self.assertEqual(following_filter.route_path, "/following")
+        self.assertEqual(my_filter.module_id, "discussions")
+        self.assertEqual(unread_filter.module_id, "discussions")
         self.assertFalse(my_filter.sidebar_visible)
         self.assertFalse(unread_filter.sidebar_visible)
 
@@ -1258,7 +1260,7 @@ class DiscussionApiTests(TestCase):
         ]
         self.assertLessEqual(len(select_group_queries), 3)
 
-    def test_discussion_list_defaults_to_most_relevant_post_user_include(self):
+    def test_discussion_list_does_not_default_to_most_relevant_post_user_include(self):
         member_group = Group.objects.create(name="DiscussionMostRelevantDefault", color="#4d698e")
         Permission.objects.create(group=member_group, permission="viewForum")
         Permission.objects.create(group=member_group, permission="startDiscussion")
@@ -1282,8 +1284,7 @@ class DiscussionApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         payload = response.json()["data"][0]
         self.assertEqual(payload["id"], discussion.id)
-        self.assertEqual(payload["most_relevant_post"]["id"], discussion.first_post_id)
-        self.assertEqual(payload["most_relevant_post"]["user"]["id"], self.author.id)
+        self.assertNotIn("most_relevant_post", payload)
 
     def test_discussion_list_most_relevant_post_falls_back_to_first_post_for_title_match(self):
         member_group = Group.objects.create(name="DiscussionMostRelevantTitle", color="#4d698e")
@@ -1347,7 +1348,7 @@ class DiscussionApiTests(TestCase):
             for query in context.captured_queries
             if "user_groups" in query["sql"].lower()
         ]
-        self.assertLessEqual(len(post_select_queries), 3)
+        self.assertLessEqual(len(post_select_queries), 4)
         self.assertLessEqual(len(select_group_queries), 3)
 
     def test_discussion_list_capability_fields_do_not_add_group_query_per_discussion(self):

@@ -15,6 +15,26 @@ def _content_discussions_method(name: str):
     return method if callable(method) else None
 
 
+def get_runtime_service(service_key: str, default=None):
+    from bias_core.extensions.runtime import get_runtime_service as runtime_get_service
+
+    return runtime_get_service(service_key, default)
+
+
+def _service_method(service, name: str):
+    if isinstance(service, dict):
+        method = service.get(name)
+    else:
+        method = getattr(service, name, None)
+    if not callable(method):
+        raise RuntimeError(f"Discussions 扩展运行时服务缺少方法: {name}")
+    return method
+
+
+def has_forum_permission(user, permission_names) -> bool:
+    return bool(_service_method(get_runtime_service("users.service"), "has_forum_permission")(user, permission_names))
+
+
 def discussion_service_provider() -> dict:
     from bias_ext_discussions.backend.models import Discussion, DiscussionUser
     from bias_ext_discussions.backend.services import DiscussionService
@@ -268,7 +288,7 @@ def _validate_replyable(discussion_id: int, user, *, discussion=None):
         return content_method(discussion_id, user, discussion=discussion)
 
     from django.core.exceptions import PermissionDenied
-    from bias_core.extensions.runtime import evaluate_runtime_model_policy, has_runtime_forum_permission
+    from bias_core.extensions.runtime import evaluate_runtime_model_policy
     from bias_ext_discussions.backend.models import Discussion
 
     if discussion is None:
@@ -279,11 +299,11 @@ def _validate_replyable(discussion_id: int, user, *, discussion=None):
 
     if (
         discussion.approval_status != Discussion.APPROVAL_APPROVED
-        and not has_runtime_forum_permission(user, ("discussion.lock", "discussion.sticky"))
+        and not has_forum_permission(user, ("discussion.lock", "discussion.sticky"))
     ):
         raise ValueError("讨论正在审核中，暂时无法回复")
 
-    if discussion.is_locked and not has_runtime_forum_permission(user, "discussion.lock"):
+    if discussion.is_locked and not has_forum_permission(user, "discussion.lock"):
         raise ValueError("讨论已锁定，无法回复")
 
     if evaluate_runtime_model_policy(

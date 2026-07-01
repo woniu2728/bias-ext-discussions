@@ -20,12 +20,6 @@ def runtime_service_method(*args, **kwargs):
     return runtime_get_service_method(*args, **kwargs)
 
 
-def serialize_runtime_user(*args, **kwargs):
-    from bias_core.extensions.runtime import serialize_runtime_user as runtime_serialize_user
-
-    return runtime_serialize_user(*args, **kwargs)
-
-
 def resolve_visible_discussion_ids(discussion_ids, user) -> list[int]:
     from bias_ext_discussions.backend.models import Discussion
     from bias_ext_discussions.backend.services import DiscussionService
@@ -162,11 +156,14 @@ def build_realtime_included_payload(
 
 
 def collect_discussion_users(target: OrderedDict, discussion) -> None:
+    from bias_core.extensions.runtime import get_runtime_resource_registry
+
+    registry = get_runtime_resource_registry()
     for user in (
         getattr(discussion, "user", None),
         getattr(discussion, "last_posted_user", None),
     ):
-        payload = serialize_runtime_user(user, resource="discussion_user")
+        payload = registry.serialize("discussion_user", user, {}) if user else None
         if payload and payload.get("id") is not None:
             merge_included_resource(target, payload)
 

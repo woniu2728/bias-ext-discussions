@@ -151,35 +151,42 @@ def resolve_discussion_can_edit(discussion, context: dict) -> bool:
     from bias_ext_discussions.backend.services import DiscussionService
 
     user = context.get("user")
-    return bool(user and DiscussionService.can_edit_discussion(discussion, user))
+    return _cached_discussion_permission(context, discussion, "can_edit", DiscussionService.can_edit_discussion)
 
 
 def resolve_discussion_can_delete(discussion, context: dict) -> bool:
     from bias_ext_discussions.backend.services import DiscussionService
 
-    user = context.get("user")
-    return bool(user and DiscussionService.can_delete_discussion(discussion, user))
+    return _cached_discussion_permission(context, discussion, "can_delete", DiscussionService.can_delete_discussion)
 
 
 def resolve_discussion_can_reply(discussion, context: dict) -> bool:
     from bias_ext_discussions.backend.services import DiscussionService
 
-    user = context.get("user")
-    return bool(user and DiscussionService.can_reply_discussion(discussion, user))
+    return _cached_discussion_permission(context, discussion, "can_reply", DiscussionService.can_reply_discussion)
 
 
 def resolve_discussion_can_rename(discussion, context: dict) -> bool:
     from bias_ext_discussions.backend.services import DiscussionService
 
-    user = context.get("user")
-    return bool(user and DiscussionService.can_rename_discussion(discussion, user))
+    return _cached_discussion_permission(context, discussion, "can_rename", DiscussionService.can_rename_discussion)
 
 
 def resolve_discussion_can_hide(discussion, context: dict) -> bool:
     from bias_ext_discussions.backend.services import DiscussionService
 
+    return _cached_discussion_permission(context, discussion, "can_hide", DiscussionService.can_hide_discussion)
+
+
+def _cached_discussion_permission(context: dict, discussion, permission: str, resolver) -> bool:
     user = context.get("user")
-    return bool(user and DiscussionService.can_hide_discussion(discussion, user))
+    if not user:
+        return False
+    cache = context.setdefault("_discussion_permission_results", {})
+    key = (getattr(discussion, "id", None), getattr(user, "id", None), permission)
+    if key not in cache:
+        cache[key] = bool(resolver(discussion, user))
+    return bool(cache[key])
 
 
 def discussion_post_preload_resolver(context: dict):
