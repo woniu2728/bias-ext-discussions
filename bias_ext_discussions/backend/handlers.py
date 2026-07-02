@@ -5,6 +5,7 @@ from django.core.exceptions import PermissionDenied
 from bias_core.extensions.platform import api_error
 from bias_core.extensions.platform import log_admin_action
 from bias_core.extensions.platform import ResourceQueryOptions, merge_resource_includes, parse_resource_query_options
+from bias_core.extensions.platform import wants_jsonapi_response
 from bias_core.extensions import ResourceEndpointDefinition
 from bias_core.extensions.platform import PaginationService
 from bias_ext_discussions.backend import content_posts
@@ -41,6 +42,14 @@ DISCUSSION_LIST_BASE_FIELDS = (
     "last_read_at",
     "last_read_post_number",
     "hidden_at",
+)
+
+ANONYMOUS_DISCUSSION_LIST_TAG_FIELDS = (
+    "id",
+    "name",
+    "slug",
+    "color",
+    "icon",
 )
 
 
@@ -154,6 +163,82 @@ def serialize_discussion_list_payload(
     return payload
 
 
+def serialize_anonymous_discussion_list_payload(discussion) -> dict:
+    payload = {
+        field: getattr(discussion, field)
+        for field in DISCUSSION_LIST_BASE_FIELDS
+        if hasattr(discussion, field)
+    }
+    payload.update(
+        {
+            "user": _serialize_anonymous_discussion_user(getattr(discussion, "user", None)),
+            "last_posted_user": _serialize_anonymous_discussion_user(
+                getattr(discussion, "last_posted_user", None),
+            ),
+            "tags": _serialize_anonymous_discussion_tags(discussion),
+        }
+    )
+    return payload
+
+
+def serialize_authenticated_default_discussion_list_payload(discussion) -> dict:
+    payload = serialize_anonymous_discussion_list_payload(discussion)
+    payload.update(
+        {
+            "is_subscribed": bool(getattr(discussion, "is_subscribed", False)),
+            "is_unread": bool(getattr(discussion, "is_unread", False)),
+            "unread_count": int(getattr(discussion, "unread_count", 0) or 0),
+            "last_read_at": getattr(discussion, "last_read_at", None),
+            "last_read_post_number": int(getattr(discussion, "last_read_post_number", 0) or 0),
+        }
+    )
+    return payload
+
+
+def _serialize_anonymous_discussion_user(user) -> dict | None:
+    if user is None:
+        return None
+    display_name = getattr(user, "display_name", "") or getattr(user, "username", "")
+    return {
+        "id": getattr(user, "id", None),
+        "username": getattr(user, "username", ""),
+        "display_name": display_name,
+        "avatar_url": getattr(user, "avatar_url", None),
+    }
+
+
+def _serialize_anonymous_discussion_tags(discussion) -> list[dict]:
+    links = _prefetched_discussion_tag_links(discussion)
+    if not links:
+        return []
+    tags = [
+        getattr(link, "tag", None)
+        for link in links
+        if getattr(link, "tag", None) is not None
+    ]
+    return [
+        {
+            field: getattr(tag, field, "")
+            for field in ANONYMOUS_DISCUSSION_LIST_TAG_FIELDS
+        }
+        for tag in sorted(
+            tags,
+            key=lambda item: (
+                getattr(item, "position", None) is None,
+                getattr(item, "position", 0) or 0,
+                getattr(item, "name", ""),
+            ),
+        )
+    ]
+
+
+def _prefetched_discussion_tag_links(discussion) -> list:
+    prefetched = getattr(discussion, "_prefetched_objects_cache", {}) or {}
+    if "discussion_tags" in prefetched:
+        return list(prefetched["discussion_tags"] or [])
+    return []
+
+
 def apply_discussion_resource_preloads(queryset, user=None, resource_options=None, default_includes=()):
     resource_options = resource_options or ResourceQueryOptions()
     includes = merge_resource_includes(
@@ -188,6 +273,19 @@ def apply_discussion_list_resource_preloads(queryset, user=None, resource_option
         include=includes,
     )
     return _filter_invalid_discussion_prefetches(planned)
+
+
+def apply_anonymous_discussion_list_preloads(queryset):
+    preloads = []
+    for relation in ("discussion_tags__tag",):
+        try:
+            queryset.model._meta.get_field(relation.split("__", 1)[0])
+        except Exception:
+            continue
+        preloads.append(relation)
+    if preloads:
+        queryset = queryset.prefetch_related(*preloads)
+    return queryset
 
 
 def _apply_discussion_user_resource_preloads(queryset, *, user=None):
@@ -479,6 +577,13 @@ def _discussion_query_params(context) -> dict:
     return dict(context.get("query") or {})
 
 
+def _discussion_list_query_params(context, *, skip_total: bool = False) -> dict:
+    params = _discussion_query_params(context)
+    if skip_total:
+        params["__skip_total"] = True
+    return params
+
+
 def dispatch_discussion_create(context):
     raw_payload = _discussion_payload(context)
     payload = DiscussionCreateSchema(**_discussion_attributes(raw_payload))
@@ -514,6 +619,33 @@ def dispatch_discussion_index(context):
     )
     resource_options = context.get("resource_options") or parse_resource_query_options(request, "discussion")
     default_includes = _discussion_index_default_includes(context, q)
+    anonymous_default_list = _is_anonymous_default_discussion_list_request(
+        context,
+        request=request,
+        user=user,
+        q=q,
+        author=author,
+        filter_code=filter_code,
+        sort=sort,
+        page=page,
+        limit=limit,
+        resource_options=resource_options,
+        default_includes=default_includes,
+    )
+    authenticated_default_list = _is_authenticated_default_discussion_list_request(
+        context,
+        request=request,
+        user=user,
+        q=q,
+        author=author,
+        filter_code=filter_code,
+        sort=sort,
+        page=page,
+        limit=limit,
+        resource_options=resource_options,
+        default_includes=default_includes,
+    )
+    lightweight_default_list = anonymous_default_list or authenticated_default_list
 
     discussions, total = DiscussionService.get_discussion_list(
         q=q,
@@ -523,26 +655,34 @@ def dispatch_discussion_index(context):
         page=page,
         limit=limit,
         user=user,
-        query_params=_discussion_query_params(context),
-        preload=lambda queryset: apply_discussion_list_resource_preloads(
-            queryset,
-            user=user,
-            resource_options=resource_options,
-            default_includes=default_includes,
+        query_params=_discussion_list_query_params(
+            context,
+            skip_total=authenticated_default_list,
+        ),
+        preload=(
+            apply_anonymous_discussion_list_preloads
+            if lightweight_default_list
+            else lambda queryset: apply_discussion_list_resource_preloads(
+                queryset,
+                user=user,
+                resource_options=resource_options,
+                default_includes=default_includes,
+            )
         ),
     )
-    attach_discussion_resource_posts(
-        discussions,
-        context={
-            "user": user,
-            "include": merge_resource_includes(
-                ("user", "last_posted_user"),
-                default_includes,
-                resource_options.includes,
-            ),
-            "require_prefetched_discussion_posts": True,
-        },
-    )
+    if not lightweight_default_list:
+        attach_discussion_resource_posts(
+            discussions,
+            context={
+                "user": user,
+                "include": merge_resource_includes(
+                    ("user", "last_posted_user"),
+                    default_includes,
+                    resource_options.includes,
+                ),
+                "require_prefetched_discussion_posts": True,
+            },
+        )
     active_filter = DiscussionService.normalize_discussion_list_filter(filter_code)
     active_sort = DiscussionService.normalize_discussion_sort(sort)
     list_resource_context = {
@@ -563,17 +703,117 @@ def dispatch_discussion_index(context):
             serialize_discussion_sort(item)
             for item in DiscussionService.get_discussion_sort_catalog()
         ],
-        "data": [
-            serialize_discussion_list_payload(
-                discussion,
-                user=user,
-                resource_options=resource_options,
-                default_includes=default_includes,
-                resource_context=list_resource_context,
-            )
-            for discussion in discussions
-        ],
+        "data": (
+            [
+                serialize_anonymous_discussion_list_payload(discussion)
+                for discussion in discussions
+            ]
+            if anonymous_default_list
+            else [
+                serialize_authenticated_default_discussion_list_payload(discussion)
+                for discussion in discussions
+            ]
+            if authenticated_default_list
+            else [
+                serialize_discussion_list_payload(
+                    discussion,
+                    user=user,
+                    resource_options=resource_options,
+                    default_includes=default_includes,
+                    resource_context=list_resource_context,
+                )
+                for discussion in discussions
+            ]
+        ),
     }
+
+
+def _is_anonymous_default_discussion_list_request(
+    context,
+    *,
+    request,
+    user,
+    q,
+    author,
+    filter_code,
+    sort,
+    page,
+    limit,
+    resource_options,
+    default_includes,
+) -> bool:
+    if user and getattr(user, "is_authenticated", False):
+        return False
+    if wants_jsonapi_response(request):
+        return False
+    if q or author:
+        return False
+    if str(filter_code or "all").strip().lower() != "all":
+        return False
+    if str(sort or "latest").strip().lower() != "latest":
+        return False
+    if page != 1 or limit != 20:
+        return False
+    if resource_options.fields or resource_options.includes:
+        return False
+    if any(
+        item not in {"tags", "tags.parent"}
+        for item in tuple(default_includes or ())
+    ):
+        return False
+    query_params = _discussion_query_params(context)
+    allowed = {"page", "limit", "filter", "sort"}
+    return all(
+        str(key or "").strip() in allowed or not _has_query_value(value)
+        for key, value in query_params.items()
+    )
+
+
+def _is_authenticated_default_discussion_list_request(
+    context,
+    *,
+    request,
+    user,
+    q,
+    author,
+    filter_code,
+    sort,
+    page,
+    limit,
+    resource_options,
+    default_includes,
+) -> bool:
+    if not (user and getattr(user, "is_authenticated", False)):
+        return False
+    if wants_jsonapi_response(request):
+        return False
+    if q or author:
+        return False
+    if str(filter_code or "all").strip().lower() not in {"my", "unread"}:
+        return False
+    if str(sort or "latest").strip().lower() != "latest":
+        return False
+    if page != 1 or limit != 20:
+        return False
+    if resource_options.fields or resource_options.includes:
+        return False
+    if any(
+        item not in {"tags", "tags.parent"}
+        for item in tuple(default_includes or ())
+    ):
+        return False
+    query_params = _discussion_query_params(context)
+    allowed = {"page", "limit", "filter", "sort"}
+    return all(
+        str(key or "").strip() in allowed or not _has_query_value(value)
+        for key, value in query_params.items()
+    )
+
+
+def _has_query_value(value) -> bool:
+    if isinstance(value, (list, tuple)):
+        return any(_has_query_value(item) for item in value)
+    return bool(str(value or "").strip())
 
 
 def dispatch_discussion_show(context):

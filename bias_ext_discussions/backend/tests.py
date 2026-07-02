@@ -6,6 +6,7 @@ from django.core.cache import cache
 from django.core.management import call_command
 from django.test import TestCase, Client
 from django.test import override_settings
+from django.urls import clear_url_caches
 from django.db import OperationalError
 from django.test.utils import CaptureQueriesContext
 from django.db import connection
@@ -1286,6 +1287,132 @@ class DiscussionApiTests(TestCase):
         self.assertEqual(payload["id"], discussion.id)
         self.assertNotIn("most_relevant_post", payload)
 
+    def test_anonymous_default_discussion_list_uses_lightweight_payload(self):
+        from bias_core.extension_test_urls import rebuild_api_urlpatterns
+
+        rebuild_api_urlpatterns()
+        clear_url_caches()
+        member_group = Group.objects.create(name="DiscussionAnonLite", color="#4d698e")
+        Permission.objects.create(group=member_group, permission="viewForum")
+        Permission.objects.create(group=member_group, permission="startDiscussion")
+        self.author.user_groups.add(member_group)
+        discussion = DiscussionService.create_discussion(
+            title="Anonymous lightweight list",
+            content="Opening content",
+            user=self.author,
+        )
+
+        response = self.client.get("/api/discussions/", {"limit": 20})
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()["data"][0]
+        self.assertEqual(payload["id"], discussion.id)
+        self.assertEqual(payload["user"]["id"], self.author.id)
+        self.assertNotIn("primary_group", payload["user"])
+        self.assertNotIn("points_balance", payload["user"])
+        self.assertNotIn("can_reply", payload)
+        self.assertNotIn("can_tag", payload)
+
+    def test_discussion_list_field_selection_bypasses_anonymous_lightweight_payload(self):
+        from bias_core.extension_test_urls import rebuild_api_urlpatterns
+
+        rebuild_api_urlpatterns()
+        clear_url_caches()
+        DiscussionService.create_discussion(
+            title="Anonymous fields list",
+            content="Opening content",
+            user=self.author,
+        )
+
+        response = self.client.get("/api/discussions/", {"limit": 20, "fields[discussion]": "can_reply"})
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()["data"][0]
+        self.assertIn("can_reply", payload)
+        self.assertNotIn("can_edit", payload)
+
+    def test_authenticated_default_discussion_filters_use_lightweight_payload(self):
+        from bias_core.extension_test_urls import rebuild_api_urlpatterns
+
+        rebuild_api_urlpatterns()
+        clear_url_caches()
+        discussion = DiscussionService.create_discussion(
+            title="Auth lightweight list",
+            content="Auth lightweight content",
+            user=self.author,
+        )
+        DiscussionService.get_discussion_by_id(discussion.id, self.reader)
+        create_runtime_post(
+            discussion_id=discussion.id,
+            content="Auth lightweight reply",
+            user=self.author,
+        )
+
+        response = self.client.get(
+            "/api/discussions/",
+            {"filter": "unread", "limit": 20},
+            **self.auth_header(self.reader),
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()["data"][0]
+        self.assertEqual(payload["id"], discussion.id)
+        self.assertIn("is_unread", payload)
+        self.assertIn("unread_count", payload)
+        self.assertIn("last_read_post_number", payload)
+        self.assertIn("user", payload)
+        self.assertIn("tags", payload)
+        self.assertNotIn("can_reply", payload)
+        self.assertNotIn("can_hide", payload)
+        self.assertNotIn("points", payload["user"])
+        self.assertNotIn("primary_group", payload["user"])
+
+    def test_authenticated_default_discussion_filters_skip_total_count(self):
+        from bias_core.extension_test_urls import rebuild_api_urlpatterns
+
+        rebuild_api_urlpatterns()
+        clear_url_caches()
+        with patch.object(DiscussionService, "get_discussion_list", return_value=([], 0)) as list_mock:
+            response = self.client.get(
+                "/api/discussions/",
+                {"filter": "unread", "limit": 20},
+                **self.auth_header(self.reader),
+            )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(list_mock.call_args.kwargs["query_params"]["__skip_total"])
+
+    def test_authenticated_field_selection_bypasses_lightweight_payload(self):
+        from bias_core.extension_test_urls import rebuild_api_urlpatterns
+
+        rebuild_api_urlpatterns()
+        clear_url_caches()
+        DiscussionService.create_discussion(
+            title="Auth fields list",
+            content="Auth fields content",
+            user=self.author,
+        )
+
+        response = self.client.get(
+            "/api/discussions/",
+            {"filter": "my", "limit": 20, "fields[discussion]": "can_reply"},
+            **self.auth_header(self.author),
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()["data"][0]
+        self.assertIn("can_reply", payload)
+        self.assertNotIn("can_hide", payload)
+
+        with patch.object(DiscussionService, "get_discussion_list", return_value=([], 0)) as list_mock:
+            field_response = self.client.get(
+                "/api/discussions/",
+                {"filter": "my", "limit": 20, "fields[discussion]": "can_reply"},
+                **self.auth_header(self.author),
+            )
+        self.assertEqual(field_response.status_code, 200, field_response.content)
+        self.assertNotIn("__skip_total", list_mock.call_args.kwargs["query_params"])
+
     def test_discussion_list_most_relevant_post_falls_back_to_first_post_for_title_match(self):
         member_group = Group.objects.create(name="DiscussionMostRelevantTitle", color="#4d698e")
         Permission.objects.create(group=member_group, permission="viewForum")
@@ -1483,6 +1610,22 @@ class DiscussionApiTests(TestCase):
 
         self.assertEqual([item["id"] for item in my_response.json()["data"]], [my_discussion.id])
         self.assertEqual([item["id"] for item in unread_response.json()["data"]], [unread_discussion.id])
+
+    def test_discussion_unread_filter_includes_discussions_without_read_state(self):
+        unread_discussion = DiscussionService.create_discussion(
+            title="未读无状态过滤 API",
+            content="未读无状态过滤内容",
+            user=self.author,
+        )
+
+        response = self.client.get(
+            "/api/discussions/",
+            {"filter": "unread"},
+            **self.auth_header(self.reader),
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIn(unread_discussion.id, [item["id"] for item in response.json()["data"]])
 
     def test_discussion_list_api_normalizes_page_and_limit(self):
         DiscussionService.create_discussion(

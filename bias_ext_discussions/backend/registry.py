@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.db import models
+from django.db.models.functions import Coalesce
 
 
 def apply_discussion_latest_sort(queryset, context: dict):
@@ -44,8 +45,15 @@ def apply_unread_discussions_list_filter(queryset, context: dict):
     if marked_all_as_read_at is not None:
         queryset = queryset.filter(last_posted_at__gt=marked_all_as_read_at)
 
-    return queryset.filter(
-        models.Q(user_states__user=user, last_post_number__gt=models.F("user_states__last_read_post_number"))
-        | models.Q(user_states__user__isnull=True)
-    )
+    state_model = queryset.model._meta.get_field("user_states").related_model
+    last_read_subquery = state_model.objects.filter(
+        user=user,
+        discussion_id=models.OuterRef("pk"),
+    ).values("last_read_post_number")[:1]
+    return queryset.annotate(
+        current_user_last_read_post_number=Coalesce(
+            models.Subquery(last_read_subquery, output_field=models.IntegerField()),
+            models.Value(0),
+        ),
+    ).filter(last_post_number__gt=models.F("current_user_last_read_post_number"))
 
